@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
+import { KEYWORD_MAX, parseKeywordDraft } from '../lib/keywords'
 import type { PluginConfig } from '../lib/types'
 
 const props = defineProps<{
@@ -13,10 +14,23 @@ const emit = defineEmits<{
 }>()
 
 const form = reactive({
-  danmaku: { ...props.modelValue.danmaku },
+  danmaku: {
+    ...props.modelValue.danmaku,
+    highlightKeywords: [...props.modelValue.danmaku.highlightKeywords],
+    blockKeywords: [...props.modelValue.danmaku.blockKeywords],
+  },
   gift: { ...props.modelValue.gift },
   openedMsgTypes: { ...props.modelValue.openedMsgTypes },
 })
+
+function joinKeywords(list: readonly string[] | undefined): string {
+  return (list ?? []).join('\n')
+}
+
+const highlightInput = ref(joinKeywords(props.modelValue.danmaku.highlightKeywords))
+const blockInput = ref(joinKeywords(props.modelValue.danmaku.blockKeywords))
+let appliedHighlight = highlightInput.value
+let appliedBlock = blockInput.value
 
 watch(
   () => props.modelValue,
@@ -24,16 +38,33 @@ watch(
     Object.assign(form.danmaku, v.danmaku)
     Object.assign(form.gift, v.gift)
     Object.assign(form.openedMsgTypes ?? {}, v.openedMsgTypes ?? {})
+    const h = joinKeywords(v.danmaku.highlightKeywords)
+    if (h !== appliedHighlight) {
+      appliedHighlight = h
+      highlightInput.value = h
+    }
+    const b = joinKeywords(v.danmaku.blockKeywords)
+    if (b !== appliedBlock) {
+      appliedBlock = b
+      blockInput.value = b
+    }
   },
   { deep: true },
 )
 
 const danmakuLocked = computed(() => form.openedMsgTypes?.danmaku === false)
 const giftLocked = computed(() => form.openedMsgTypes?.gift === false)
+const highlightDraft = computed(() => parseKeywordDraft(highlightInput.value, '高亮关键词'))
+const blockDraft = computed(() => parseKeywordDraft(blockInput.value, '屏蔽关键词'))
+const keywordInvalid = computed(() => !!highlightDraft.value.error || !!blockDraft.value.error)
 
 function syncOut() {
   emit('update:modelValue', {
-    danmaku: { ...form.danmaku },
+    danmaku: {
+      ...form.danmaku,
+      highlightKeywords: [...form.danmaku.highlightKeywords],
+      blockKeywords: [...form.danmaku.blockKeywords],
+    },
     gift: { ...form.gift },
     layout: props.modelValue.layout,
     notice: props.modelValue.notice,
@@ -41,7 +72,30 @@ function syncOut() {
   })
 }
 
+function commitHighlight() {
+  const draft = highlightDraft.value
+  if (draft.error) return
+  const serialized = joinKeywords(draft.keywords)
+  if (serialized === appliedHighlight) return
+  form.danmaku.highlightKeywords = draft.keywords
+  appliedHighlight = serialized
+  syncOut()
+}
+
+function commitBlock() {
+  const draft = blockDraft.value
+  if (draft.error) return
+  const serialized = joinKeywords(draft.keywords)
+  if (serialized === appliedBlock) return
+  form.danmaku.blockKeywords = draft.keywords
+  appliedBlock = serialized
+  syncOut()
+}
+
 function onSave() {
+  commitHighlight()
+  commitBlock()
+  if (keywordInvalid.value) return
   syncOut()
   emit('save')
 }
@@ -84,6 +138,36 @@ function onSave() {
           @change="syncOut"
         />
       </label>
+      <label class="stack">
+        <span class="stack-label">
+          高亮关键词
+          <em :class="{ over: highlightDraft.error }">{{ highlightDraft.count }}/{{ KEYWORD_MAX }}</em>
+        </span>
+        <textarea
+          v-model="highlightInput"
+          rows="4"
+          :disabled="danmakuLocked"
+          placeholder="每行一个，也可用逗号分隔，最多 20 个"
+          @input="commitHighlight"
+        />
+        <p v-if="highlightDraft.error" class="field-error" role="alert">{{ highlightDraft.error }}</p>
+        <p v-else class="field-hint">不区分大小写，弹幕包含即由服务端标记高亮。示例里有「高能」。</p>
+      </label>
+      <label class="stack">
+        <span class="stack-label">
+          屏蔽关键词
+          <em :class="{ over: blockDraft.error }">{{ blockDraft.count }}/{{ KEYWORD_MAX }}</em>
+        </span>
+        <textarea
+          v-model="blockInput"
+          rows="4"
+          :disabled="danmakuLocked"
+          placeholder="每行一个，也可用逗号分隔，最多 20 个"
+          @input="commitBlock"
+        />
+        <p v-if="blockDraft.error" class="field-error" role="alert">{{ blockDraft.error }}</p>
+        <p v-else class="field-hint">命中后由服务端丢弃，不会推到运行态。预览会按同样规则隐藏示例。示例里有「广告」。</p>
+      </label>
     </section>
 
     <section class="block" :class="{ locked: giftLocked }">
@@ -125,7 +209,7 @@ function onSave() {
       </label>
     </section>
 
-    <button class="save-btn" type="submit" :disabled="saving">
+    <button class="save-btn" type="submit" :disabled="saving || keywordInvalid">
       {{ saving ? '保存中…' : '保存配置' }}
     </button>
   </form>
@@ -194,6 +278,55 @@ function onSave() {
   width: 18px;
   height: 18px;
   accent-color: #00a1d6;
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 0 4px;
+  border-top: 1px solid #262733;
+}
+.stack-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  color: #c8cad4;
+}
+.stack-label em {
+  font-style: normal;
+  font-size: 11px;
+  color: #8b8e9c;
+}
+.stack-label em.over {
+  color: #ff8a80;
+}
+.stack textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 72px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #353645;
+  background: #12131a;
+  color: #eee;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.stack textarea:disabled {
+  opacity: 0.6;
+}
+.field-hint {
+  margin: 0;
+  font-size: 12px;
+  color: #8b8e9c;
+  line-height: 1.45;
+}
+.field-error {
+  margin: 0;
+  font-size: 12px;
+  color: #ff8a80;
+  line-height: 1.45;
 }
 .save-btn {
   appearance: none;

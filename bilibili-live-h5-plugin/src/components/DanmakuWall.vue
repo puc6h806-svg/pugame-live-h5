@@ -1,13 +1,31 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
+import IdentityBadge from './IdentityBadge.vue'
+import { isHighlighted } from '../lib/highlight'
+import { resolveIdentityBadge } from '../lib/identity'
 import type { DanmakuEvent, PluginConfig } from '../lib/types'
 
-const props = defineProps<{
-  items: DanmakuEvent[]
-  config: PluginConfig['danmaku']
-}>()
+const props = withDefaults(
+  defineProps<{
+    items: DanmakuEvent[]
+    config: PluginConfig['danmaku']
+    /** Full-viewport wall clears notches. Off inside the settings preview. */
+    safeInset?: boolean
+    /** overlay fills the viewport; flow stacks every line in document flow. */
+    layout?: 'overlay' | 'flow'
+  }>(),
+  { safeInset: true, layout: 'overlay' },
+)
 
 const listEl = ref<HTMLElement | null>(null)
+
+function roleOf(identity: DanmakuEvent['identity']): string | undefined {
+  return resolveIdentityBadge(identity)?.role
+}
+
+function accentOf(identity: DanmakuEvent['identity']): string | undefined {
+  return resolveIdentityBadge(identity)?.accent
+}
 
 const visible = computed(() => {
   if (!props.config.enabled) return []
@@ -26,9 +44,19 @@ watch(
 </script>
 
 <template>
-  <div class="danmaku-wall" :class="{ disabled: !config.enabled }">
+  <div
+    class="danmaku-wall"
+    :class="{ disabled: !config.enabled, 'safe-inset': safeInset && layout === 'overlay', flow: layout === 'flow' }"
+  >
     <div ref="listEl" class="danmaku-list">
-      <div v-for="d in visible" :key="d.id" class="danmaku-item">
+      <div
+        v-for="d in visible"
+        :key="d.id"
+        class="danmaku-item"
+        :class="{ 'is-highlight': isHighlighted(d) }"
+        :data-identity="roleOf(d.identity)"
+        :style="accentOf(d.identity) ? { '--id-accent': accentOf(d.identity) } : undefined"
+      >
         <span
           v-if="config.showAvatar"
           class="avatar"
@@ -36,7 +64,7 @@ watch(
           aria-hidden="true"
         >{{ d.avatar ? '' : (d.uname.slice(0, 1) || '?') }}</span>
         <span class="body">
-          <span class="uname">{{ d.uname }}</span>
+          <span class="uname"><IdentityBadge :identity="d.identity" />{{ d.uname }}</span>
           <span class="text">{{ d.msg }}</span>
         </span>
       </div>
@@ -55,6 +83,25 @@ watch(
   justify-content: flex-end;
   padding: 12px 12px 14px;
   box-sizing: border-box;
+}
+.danmaku-wall.safe-inset {
+  padding:
+    calc(12px + var(--safe-top))
+    calc(12px + var(--safe-right))
+    calc(14px + var(--safe-bottom))
+    calc(12px + var(--safe-left));
+}
+.danmaku-wall.flow {
+  position: relative;
+  inset: auto;
+  width: 100%;
+  height: auto;
+  justify-content: flex-start;
+  padding: 4px 12px 12px;
+}
+.danmaku-wall.flow .danmaku-list {
+  overflow: visible;
+  max-height: none;
 }
 .danmaku-wall.disabled .danmaku-list {
   visibility: hidden;
@@ -80,6 +127,19 @@ watch(
   color: #fff;
   line-height: 1.35;
   animation: fade-in 0.16s ease-out;
+}
+.danmaku-item[data-identity] {
+  border-left: 3px solid var(--id-accent, rgba(255, 255, 255, 0.16));
+}
+.danmaku-item.is-highlight {
+  background: linear-gradient(100deg, rgba(255, 196, 0, 0.46), rgba(6, 8, 14, 0.9) 48%);
+  box-shadow:
+    0 0 0 1px rgba(255, 210, 60, 0.95),
+    0 4px 18px rgba(255, 180, 0, 0.32);
+}
+.danmaku-item.is-highlight .text {
+  color: #ffe7a3;
+  font-weight: 700;
 }
 .avatar {
   flex-shrink: 0;

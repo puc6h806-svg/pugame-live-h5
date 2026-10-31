@@ -73,16 +73,20 @@ npm run preview
 ### 归一化事件字段
 
 ```ts
-danmaku: { type, id, uid, uname, msg, text?, avatar?, ts, highlight? }  // 文本仍读 msg；text 与 msg 相同
-gift:    { type, id, uid, uname, giftId, giftName, num, price, ts, combo? }
+danmaku: { type, id, uid, uname, msg, text?, avatar?, ts, highlight?, identity? }
+gift:    { type, id, uid, uname, giftId, giftName, num, price, ts, combo?, giftIcon? }
 config_updated: { type, config }
 error:   { type, code: UNAUTHORIZED|ROOM_LIMIT|MSG_TYPE|INTERNAL, message }
 ```
 
+`highlight === true` 时气泡用金色描边和高亮底。屏蔽词不在前端再滤一遍：后端命中 `blockKeywords` 会直接丢弃，运行态收不到那条弹幕。
+
+`identity` 只认后端已经映射好的 `admin` | `guard` | `member` | `normal`。见下方「身份徽章」。
+
 ## 双态（plug_env）
 
 - `plug_env=0`（默认）：运行态 — 弹幕墙 + 礼物层
-- `plug_env=1`：设置态 — 配置表单 + 可选预览条
+- `plug_env=1`：设置态 — 配置表单 + 示例预览（不建连、不开 WebSocket，也不依赖 `VITE_MOCK=1`）
 
 ## 运行态（重连 / 弹幕 / 礼物连击）
 
@@ -100,7 +104,7 @@ error:   { type, code: UNAUTHORIZED|ROOM_LIMIT|MSG_TYPE|INTERNAL, message }
 | `danmaku.maxLines` | `8` | 最大行数（与后端房间默认一致） |
 | `danmaku.showAvatar` | `true` | 是否显示头像 |
 | `danmaku.fontSize` / `opacity` / `enterMs` | `14` / `1` / `300` | 样式；设置态表单暂未露出，随配置往返 |
-| `danmaku.highlightKeywords` / `blockKeywords` | `[]` | 后端匹配；本页不另做高亮 UI |
+| `danmaku.highlightKeywords` / `blockKeywords` | `[]` | 各最多 20 条、单条最长 64。设置态可编辑，随 `GET`/`PUT /api/config` 的 `danmaku` 往返。高亮由后端打 `highlight`；屏蔽由后端丢弃 |
 | `gift.enabled` | `true` | 是否显示礼物 |
 | `gift.minPrice` | `0` | 最低价格（官方整数单位） |
 | `gift.durationMs` | `3000` | 礼物展示时长 |
@@ -109,6 +113,33 @@ error:   { type, code: UNAUTHORIZED|ROOM_LIMIT|MSG_TYPE|INTERNAL, message }
 | `notice.enterEnabled` / `guardEnabled` / `scEnabled` | `false` | P2 预留，默认关 |
 
 设置态 `openedMsgTypes.danmaku|gift === false` 时灰显并标明「未开通消息类型」。
+
+### 关键词（设置态）
+
+高亮 / 屏蔽各是一个文本框（换行或逗号分隔）。超过 20 个，或单条超过 64 字，表单用中文报错并禁止保存，不会把超限数组 PUT 出去。合法修改会立刻反映到下方示例预览：包含高亮词的示例气泡变色；包含屏蔽词的示例行隐藏（只模拟服务端规则，运行态仍只消费已经过滤过的事件）。
+
+### 设置态示例预览
+
+`plug_env=1` 时用 `src/mock/eventMock.ts` 的 `settingsPreviewSamples()` 画一条弹幕墙和一张礼物卡。不调用 `session/start`，也不开 WebSocket。开关（启用弹幕 / 启用礼物）和当前关键词会作用在这组假数据上。
+
+### 安全区
+
+`index.html` 使用 `viewport-fit=cover`。运行态弹幕墙、礼物层、顶部连接状态、底部 toast，以及设置页边距，都叠了 `env(safe-area-inset-*)`（CSS 变量 `--safe-*`），避免刘海和 Home 条挡住内容。桌面浏览器 insets 为 0 时只保留原有内边距。
+
+### 身份徽章
+
+只读归一化弹幕上的 `identity`，取值与后端一致：`admin` | `guard` | `member` | `normal`。前端不看 `guard_level` / `is_admin`，也不把总督和提督拆开（后端都写成 `guard`）。
+
+| `identity` | 表现 |
+|------------|------|
+| `admin` | 小徽章「房管」+ 冷色强调 |
+| `guard` | 小徽章「舰长」+ 粉色强调 |
+| `member` | 轻量徽章「粉丝团」+ 淡绿强调 |
+| `normal`、缺字段、或其它值 | 不画徽章，颜色保持默认 |
+
+礼物事件没有 `identity`，礼物卡不加身份样式。
+
+`notice.*` 仍是 P2，默认关，本页不打开。
 
 ## 错误码 → 中文（一行）
 
@@ -133,9 +164,10 @@ src/
   App.vue                 # plug_env 切视图；session/start 门禁
   views/RuntimeView.vue   # 弹幕墙 + 礼物层；听 WS
   views/SettingsView.vue  # GET/PUT /api/config
-  components/            # DanmakuWall、GiftLayer、ConnectionStatus、SettingsForm、ErrorToast
-  lib/                    # query session verify eventChannel config errorMap types env
-  mock/eventMock.ts       # 仅 VITE_MOCK=1
+  components/            # DanmakuWall、GiftLayer、GiftCard、IdentityBadge、ConnectionStatus、SettingsForm、ErrorToast
+  lib/                    # query session verify eventChannel config keywords identity highlight errorMap types env
+  mock/eventMock.ts       # VITE_MOCK=1 的定时推送；另导出设置态静态示例
+  tests/                  # node:test。`npm test`
 ```
 
 ## 已知缺口
@@ -143,3 +175,4 @@ src/
 - 无有效身份码无法真收弹幕/礼物（后端会 401「身份码错误」等）。
 - 开放平台须已开通 `LIVE_OPEN_PLATFORM_DM` / `SEND_GIFT`；未开通则无对应事件。
 - 后端密钥与上游长连细节不暴露给 H5。
+- 弹幕 `identity` 以外的身份字段不展示。`normal` 与缺失都没有徽章。

@@ -1,5 +1,5 @@
 import type { EventHandler } from '../lib/eventChannel'
-import type { DanmakuEvent, GiftEvent, PluginEvent } from '../lib/types'
+import type { DanmakuEvent, DanmakuIdentity, GiftEvent, PluginEvent } from '../lib/types'
 
 const NAMES = ['小明', '阿花', '直播粉A', '夜猫子', '舰长酱', '醒目仔', '路过的观众', '弹幕机器']
 const TEXTS = [
@@ -31,16 +31,103 @@ function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]!
 }
 
+const MOCK_IDENTITIES: Array<DanmakuIdentity | undefined> = [
+  'admin',
+  'guard',
+  'member',
+  'normal',
+  undefined,
+]
+let mockSeq = 0
+
 function makeDanmaku(): DanmakuEvent {
   const uname = pick(NAMES)
-  return {
+  const msg = pick(TEXTS)
+  const identity = MOCK_IDENTITIES[mockSeq % MOCK_IDENTITIES.length]
+  mockSeq += 1
+  const ev: DanmakuEvent = {
     type: 'danmaku',
     id: uid(),
     uid: uid(),
     uname,
-    msg: pick(TEXTS),
+    msg,
     avatar: undefined,
     ts: Date.now(),
+  }
+  if (identity) ev.identity = identity
+  if (msg.includes('高能')) ev.highlight = true
+  return ev
+}
+
+/** Fixed sample lines for the settings preview. Does not open a socket. */
+export function settingsPreviewSamples(): { danmaku: DanmakuEvent[]; gift: GiftEvent } {
+  const ts = 1_700_000_000_000
+  return {
+    danmaku: [
+      {
+        type: 'danmaku',
+        id: 'preview-highlight',
+        uid: 'preview-u4',
+        uname: '高亮示例',
+        msg: '前方高能预警',
+        ts,
+      },
+      {
+        type: 'danmaku',
+        id: 'preview-admin',
+        uid: 'preview-u1',
+        uname: '房管酱',
+        msg: '房管巡查',
+        ts,
+        identity: 'admin',
+      },
+      {
+        type: 'danmaku',
+        id: 'preview-guard',
+        uid: 'preview-u2',
+        uname: '舰长酱',
+        msg: '舰长报到',
+        ts,
+        identity: 'guard',
+      },
+      {
+        type: 'danmaku',
+        id: 'preview-member',
+        uid: 'preview-u3',
+        uname: '粉丝牌',
+        msg: '粉丝团打卡',
+        ts,
+        identity: 'member',
+      },
+      {
+        type: 'danmaku',
+        id: 'preview-normal',
+        uid: 'preview-u5',
+        uname: '路过观众',
+        msg: '这是一条普通弹幕',
+        ts,
+        identity: 'normal',
+      },
+      {
+        type: 'danmaku',
+        id: 'preview-block',
+        uid: 'preview-u6',
+        uname: '屏蔽示例',
+        msg: '这是广告弹幕',
+        ts,
+      },
+    ],
+    gift: {
+      type: 'gift',
+      id: 'preview-gift',
+      uid: 'preview-g1',
+      uname: '礼物示例',
+      giftId: 25,
+      giftName: '小电视',
+      num: 2,
+      price: 1_245_000,
+      ts,
+    },
   }
 }
 

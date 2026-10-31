@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import SettingsForm from '../components/SettingsForm.vue'
 import ErrorToast from '../components/ErrorToast.vue'
 import DanmakuWall from '../components/DanmakuWall.vue'
+import GiftCard from '../components/GiftCard.vue'
 import { fetchConfig, saveConfig } from '../lib/config'
 import { mapError } from '../lib/errorMap'
-import { DEFAULT_CONFIG, type DanmakuEvent, type PluginConfig } from '../lib/types'
+import { applyKeywordPreview } from '../lib/keywords'
+import { settingsPreviewSamples } from '../mock/eventMock'
+import { DEFAULT_CONFIG, type PluginConfig } from '../lib/types'
 
 const props = defineProps<{
   token?: string
@@ -16,24 +19,11 @@ const config = ref<PluginConfig>(structuredClone(DEFAULT_CONFIG))
 const saving = ref(false)
 const toast = ref<string | null>(null)
 const showPreview = ref(true)
-const previewItems = ref<DanmakuEvent[]>([
-  {
-    type: 'danmaku',
-    id: 'preview-1',
-    uid: '0',
-    msg: '这是设置态预览弹幕',
-    uname: '预览用户',
-    ts: Date.now(),
-  },
-  {
-    type: 'danmaku',
-    id: 'preview-2',
-    uid: '0',
-    msg: '保存后运行态会生效',
-    uname: '小助手',
-    ts: Date.now(),
-  },
-])
+const samples = settingsPreviewSamples()
+
+const previewItems = computed(() =>
+  applyKeywordPreview(samples.danmaku, config.value.danmaku),
+)
 
 onMounted(async () => {
   config.value = await fetchConfig(
@@ -71,14 +61,24 @@ async function onSave() {
     <div class="preview-toggle">
       <label>
         <input v-model="showPreview" type="checkbox" />
-        显示预览条
+        显示预览
       </label>
     </div>
 
     <div v-if="showPreview" class="preview-box">
-      <div class="preview-label">运行态预览</div>
+      <div class="preview-label">示例预览 · 未连接直播间</div>
       <div class="preview-stage">
-        <DanmakuWall :items="previewItems" :config="config.danmaku" />
+        <div v-if="config.gift.enabled" class="preview-gift">
+          <GiftCard :gift="samples.gift" />
+        </div>
+        <p v-else class="preview-flag">礼物特效已关闭</p>
+        <p v-if="!config.danmaku.enabled" class="preview-flag">弹幕已关闭</p>
+        <DanmakuWall
+          :items="previewItems"
+          :config="config.danmaku"
+          :safe-inset="false"
+          layout="flow"
+        />
       </div>
     </div>
 
@@ -89,7 +89,11 @@ async function onSave() {
 <style scoped>
 .settings {
   min-height: 100%;
-  padding: 20px 16px 32px;
+  padding:
+    calc(20px + var(--safe-top))
+    calc(16px + var(--safe-right))
+    calc(32px + var(--safe-bottom))
+    calc(16px + var(--safe-left));
   box-sizing: border-box;
   background: #0e0f14;
   color: #e8e9ef;
@@ -127,7 +131,27 @@ async function onSave() {
 }
 .preview-stage {
   position: relative;
-  height: 140px;
-  background: linear-gradient(180deg, #1c2030, #12141c);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 14px 0 6px;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.45)),
+    linear-gradient(180deg, #1c2030, #12141c);
+}
+.preview-gift {
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.preview-flag {
+  align-self: center;
+  margin: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #ddd;
+  font-size: 12px;
 }
 </style>
