@@ -28,7 +28,7 @@ env:
   NODE_VERSION: "20"
   # Not a secret. Pages Functions read env.BACKEND_ORIGIN and fall back to this
   # same URL inside cloudflare/worker-same-origin.js when the project var is unset.
-  BACKEND_ORIGIN: http://111.231.164.192:8787
+  BACKEND_ORIGIN: https://api.pugame.site
   PAGES_ORIGIN: https://pugame-live-h5.pages.dev
 
 jobs:

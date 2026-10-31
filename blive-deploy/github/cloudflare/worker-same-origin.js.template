@@ -27,7 +27,7 @@ const EMBED_HEADERS = {
   "Referrer-Policy": "strict-origin-when-cross-origin",
 };
 
-export const DEFAULT_BACKEND_ORIGIN = "http://111.231.164.192:8787";
+export const DEFAULT_BACKEND_ORIGIN = "https://api.pugame.site";
 export const DEFAULT_PAGES_ORIGIN = "https://pugame-live-h5.pages.dev";
 
 export function headersForUpstream(request) {

@@ -3,12 +3,13 @@ import { z } from 'zod';
 import { roomHub } from './roomHub';
 import { issueSessionToken, verifySessionToken } from '../session/token';
 import { configStore } from '../config/store';
+import { roomConfigPatchSchema, toRoomConfigPartial } from '../config/schema';
 import { loadEnv } from '../utils/env';
 import type { ErrorCode } from '../types/events';
-import type { RoomConfigPartial } from '../types/config';
+import { ERROR_TEXT } from '../types/events';
 
 function sendError(res: Response, status: number, code: ErrorCode, message?: string): void {
-  res.status(status).json({ type: 'error', code, message });
+  res.status(status).json({ type: 'error', code, message: message ?? ERROR_TEXT[code] });
 }
 
 function bearerToken(req: Request): string | null {
@@ -25,7 +26,7 @@ export function createApiRouter(): Router {
     const schema = z.object({ code: z.string().min(1) });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
-      sendError(res, 400, 'UNAUTHORIZED', 'code is required');
+      sendError(res, 400, 'UNAUTHORIZED');
       return;
     }
 
@@ -53,8 +54,9 @@ export function createApiRouter(): Router {
     } catch (err) {
       const e = err as Error & { code?: ErrorCode };
       const code: ErrorCode = e.code ?? 'INTERNAL';
+      console.warn('[session/start]', code, e.message);
       const status = code === 'UNAUTHORIZED' ? 401 : code === 'ROOM_LIMIT' ? 429 : 500;
-      sendError(res, status, code, e.message);
+      sendError(res, status, code);
     }
   });
 
@@ -62,7 +64,7 @@ export function createApiRouter(): Router {
   router.post('/session/end', async (req: Request, res: Response) => {
     const token = bearerToken(req);
     if (!token) {
-      sendError(res, 401, 'UNAUTHORIZED', 'Bearer token required');
+      sendError(res, 401, 'UNAUTHORIZED');
       return;
     }
     try {
@@ -70,7 +72,8 @@ export function createApiRouter(): Router {
       await roomHub.endSession(payload.roomId, payload.appId);
       res.json({ ok: true });
     } catch (err) {
-      sendError(res, 401, 'UNAUTHORIZED', err instanceof Error ? err.message : 'invalid token');
+      console.warn('[session/end]', err instanceof Error ? err.message : err);
+      sendError(res, 401, 'UNAUTHORIZED');
     }
   });
 
@@ -79,50 +82,32 @@ export function createApiRouter(): Router {
     const roomId = String(req.query.roomId ?? '');
     const appId = String(req.query.appId ?? loadEnv().biliAppId);
     if (!roomId) {
-      sendError(res, 400, 'INTERNAL', 'roomId is required');
+      sendError(res, 400, 'INTERNAL', '配置无效');
       return;
     }
     const config = configStore.get(roomId, appId);
     res.json({ roomId: Number(roomId) || roomId, appId, config });
   });
 
-  /** PUT /api/config body { roomId, appId?, danmaku?, gift? } */
+  /** PUT /api/config body { roomId, appId?, danmaku?, gift?, layout?, notice? } */
   router.put('/config', (req: Request, res: Response) => {
-    const schema = z.object({
+    const schema = roomConfigPatchSchema.extend({
       roomId: z.union([z.number(), z.string()]),
       appId: z.union([z.number(), z.string()]).optional(),
-      danmaku: z
-        .object({
-          enabled: z.boolean().optional(),
-          maxLines: z.number().int().positive().optional(),
-          showAvatar: z.boolean().optional(),
-        })
-        .optional(),
-      gift: z
-        .object({
-          enabled: z.boolean().optional(),
-          minPrice: z.number().int().nonnegative().optional(),
-          durationMs: z.number().int().positive().optional(),
-        })
-        .optional(),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
-      sendError(res, 400, 'INTERNAL', 'invalid config body');
+      sendError(res, 400, 'INTERNAL', '配置无效');
       return;
     }
 
     const roomId = parsed.data.roomId;
     const appId = String(parsed.data.appId ?? loadEnv().biliAppId);
-    const partial: RoomConfigPartial = {
-      danmaku: parsed.data.danmaku,
-      gift: parsed.data.gift,
-    };
-    const config = configStore.put(roomId, appId, partial);
+    const partial = toRoomConfigPartial(parsed.data);
     const roomNum = typeof roomId === 'number' ? roomId : Number(roomId);
-    if (Number.isFinite(roomNum)) {
-      roomHub.pushConfigUpdated(roomNum, appId, config);
-    }
+    const config = Number.isFinite(roomNum)
+      ? roomHub.updateConfig(roomNum, appId, partial)
+      : configStore.put(roomId, appId, partial);
     res.json({ roomId, appId, config });
   });
 
@@ -134,7 +119,7 @@ export function createApiRouter(): Router {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   router.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     console.error('[api]', err instanceof Error ? err.message : err);
-    sendError(res, 500, 'INTERNAL', 'unexpected error');
+    sendError(res, 500, 'INTERNAL');
   });
 
   return router;

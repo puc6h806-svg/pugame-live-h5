@@ -35,6 +35,8 @@ function syncOut() {
   emit('update:modelValue', {
     danmaku: { ...form.danmaku },
     gift: { ...form.gift },
+    layout: props.modelValue.layout,
+    notice: props.modelValue.notice,
     openedMsgTypes: { ...form.openedMsgTypes },
   })
 }

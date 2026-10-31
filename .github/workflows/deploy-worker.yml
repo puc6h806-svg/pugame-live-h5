@@ -27,7 +27,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  BACKEND_ORIGIN: http://111.231.164.192:8787
+  BACKEND_ORIGIN: https://api.pugame.site
   PAGES_ORIGIN: https://pugame-live-h5.pages.dev
 
 jobs:
@@ -46,7 +46,7 @@ jobs:
           workers_dev = true
 
           [vars]
-          BACKEND_ORIGIN = "http://111.231.164.192:8787"
+          BACKEND_ORIGIN = "https://api.pugame.site"
           PAGES_ORIGIN = "https://pugame-live-h5.pages.dev"
           EOF
 
