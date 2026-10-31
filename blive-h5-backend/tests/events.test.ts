@@ -28,6 +28,7 @@ describe('normalizeCmd', () => {
     assert.equal(result.event.msg, '你好');
     assert.equal(result.event.text, '你好');
     assert.equal(result.event.highlight, undefined);
+    assert.equal(result.event.identity, undefined);
     assert.equal(result.event.avatar, 'https://example.com/a.png');
     assert.equal(result.event.ts, 1700000000);
   });
@@ -68,6 +69,128 @@ describe('normalizeCmd', () => {
       const result = normalizeCmd({ cmd, data: {} });
       assert.equal(result.kind, 'skip', cmd);
     }
+  });
+});
+
+function danmakuFrom(data: Record<string, unknown>, msg = '你好') {
+  const result = normalizeCmd({
+    cmd: 'LIVE_OPEN_PLATFORM_DM',
+    data: {
+      msg_id: 'id-1',
+      open_id: 'oid',
+      uname: '用户',
+      msg,
+      timestamp: 1700000000,
+      ...data,
+    },
+  });
+  assert.equal(result.kind, 'event');
+  if (result.kind !== 'event') throw new Error('expected event');
+  assert.equal(result.event.type, 'danmaku');
+  if (result.event.type !== 'danmaku') throw new Error('expected danmaku');
+  assert.equal(result.event.msg, msg);
+  assert.equal(result.event.text, msg);
+  assert.equal(result.event.highlight, undefined);
+  return result.event;
+}
+
+describe('danmaku identity', () => {
+  const plain = {
+    is_admin: 0,
+    guard_level: 0,
+    fans_medal_wearing_status: false,
+    fans_medal_level: 0,
+  };
+
+  it('maps is_admin 1 or other truthy values to admin, above guard and medal', () => {
+    const topped = danmakuFrom({
+      ...plain,
+      is_admin: 1,
+      guard_level: 1,
+      fans_medal_wearing_status: true,
+      fans_medal_level: 21,
+    });
+    assert.equal(topped.identity, 'admin');
+    assert.equal(danmakuFrom({ ...plain, is_admin: true }).identity, 'admin');
+    assert.equal(danmakuFrom({ ...plain, is_admin: '1' }).identity, 'admin');
+    assert.equal(danmakuFrom({ ...plain, is_admin: 2 }).identity, 'admin');
+  });
+
+  it('maps guard_level 1|2|3 to guard when the sender is not an admin', () => {
+    for (const guard_level of [1, 2, 3, '1', '2', '3']) {
+      const event = danmakuFrom({
+        ...plain,
+        guard_level,
+        fans_medal_wearing_status: true,
+        fans_medal_level: 10,
+      });
+      assert.equal(event.identity, 'guard', String(guard_level));
+    }
+    assert.equal(danmakuFrom({ ...plain, guard_level: 0 }).identity, 'normal');
+    assert.equal(danmakuFrom({ ...plain, guard_level: 4 }).identity, 'normal');
+  });
+
+  it('maps a worn fans medal with level > 0 to member', () => {
+    const event = danmakuFrom({
+      ...plain,
+      fans_medal_wearing_status: true,
+      fans_medal_level: 6,
+    });
+    assert.equal(event.identity, 'member');
+    assert.equal(
+      danmakuFrom({ ...plain, fans_medal_wearing_status: true, fans_medal_level: '12' }).identity,
+      'member',
+    );
+    assert.equal(
+      danmakuFrom({ ...plain, fans_medal_wearing_status: true, fans_medal_level: 0 }).identity,
+      'normal',
+    );
+    assert.equal(
+      danmakuFrom({ ...plain, fans_medal_wearing_status: false, fans_medal_level: 20 }).identity,
+      'normal',
+    );
+  });
+
+  it('maps a ruled-out sender to normal and still emits msg and text', () => {
+    const event = danmakuFrom(plain, '普通弹幕');
+    assert.equal(event.identity, 'normal');
+    assert.equal(event.msg, '普通弹幕');
+    assert.equal(event.text, '普通弹幕');
+    assert.equal(danmakuFrom({ ...plain, is_admin: false }).identity, 'normal');
+    assert.equal(danmakuFrom({ ...plain, is_admin: '0' }).identity, 'normal');
+  });
+
+  it('keeps a lower role when the higher fields are absent', () => {
+    assert.equal(danmakuFrom({ is_admin: 1 }).identity, 'admin');
+    assert.equal(danmakuFrom({ guard_level: 1 }).identity, 'guard');
+    assert.equal(danmakuFrom({ guard_level: 2, fans_medal_wearing_status: true, fans_medal_level: 5 }).identity, 'guard');
+    assert.equal(
+      danmakuFrom({ fans_medal_wearing_status: true, fans_medal_level: 5 }).identity,
+      'member',
+    );
+    assert.equal(
+      danmakuFrom({ is_admin: 0, fans_medal_wearing_status: true, fans_medal_level: 5 }).identity,
+      'member',
+    );
+  });
+
+  it('omits identity when normal cannot be proven, and keeps the danmaku', () => {
+    assert.equal(danmakuFrom({}).identity, undefined);
+    assert.equal(
+      danmakuFrom({ guard_level: 0, fans_medal_wearing_status: false, fans_medal_level: 0 }).identity,
+      undefined,
+    );
+    assert.equal(
+      danmakuFrom({ is_admin: 0, fans_medal_wearing_status: false, fans_medal_level: 0 }).identity,
+      undefined,
+    );
+    assert.equal(
+      danmakuFrom({ is_admin: 0, guard_level: 0, fans_medal_wearing_status: true }).identity,
+      undefined,
+    );
+    assert.equal(danmakuFrom({ is_admin: 0, guard_level: 0, fans_medal_level: 8 }).identity, undefined);
+    assert.equal(danmakuFrom({ ...plain, is_admin: 'yes' }).identity, undefined);
+    assert.equal(danmakuFrom({ ...plain, guard_level: 'nope' }).identity, undefined);
   });
 });
 

@@ -1,4 +1,4 @@
-import type { DanmakuEvent, GiftEvent } from '../types/events';
+import type { DanmakuEvent, DanmakuIdentity, GiftEvent } from '../types/events';
 
 const CMD_DM = 'LIVE_OPEN_PLATFORM_DM';
 const CMD_GIFT = 'LIVE_OPEN_PLATFORM_SEND_GIFT';
@@ -23,6 +23,68 @@ function resolveUid(data: Record<string, unknown>): string {
   const openId = asString(data.open_id).trim();
   if (openId) return openId;
   return asString(data.uid, '0');
+}
+
+/**
+ * `is_admin === 1` or another truthy flag (boolean true, non-zero number, "1"/"true").
+ * Explicit non-admin is 0 / false / "" / "0" / "false".
+ * Missing or unreadable → undefined (cannot rule admin in or out).
+ */
+function readAdmin(v: unknown): boolean | undefined {
+  if (v === true || v === 1) return true;
+  if (v === false || v === 0) return false;
+  if (typeof v === 'number') {
+    if (!Number.isFinite(v)) return undefined;
+    return v !== 0;
+  }
+  if (typeof v === 'string') {
+    const s = v.trim().toLowerCase();
+    if (s === '1' || s === 'true') return true;
+    if (s === '0' || s === 'false' || s === '') return false;
+  }
+  return undefined;
+}
+
+/** Numeric guard/medal level. Missing or non-numeric → undefined (do not coerce to 0). */
+function readLevel(v: unknown): number | undefined {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) return Number(v);
+  return undefined;
+}
+
+/** Official field is boolean. Only `true` / `false` decide wearing. */
+function readWearing(v: unknown): boolean | undefined {
+  if (v === true) return true;
+  if (v === false) return false;
+  return undefined;
+}
+
+/**
+ * LIVE_OPEN_PLATFORM_DM role. First match wins:
+ * 1. admin — is_admin truthy
+ * 2. guard — guard_level 1|2|3 (总督/提督/舰长)
+ * 3. member — fans medal worn and level > 0
+ * 4. normal — admin, guard, and medal are all present and ruled out
+ * If nothing matched and a field needed to rule a role out is missing or
+ * unreadable, omit identity instead of guessing "normal".
+ * Never invent other labels, and never drop the danmaku.
+ */
+function resolveIdentity(data: Record<string, unknown>): DanmakuIdentity | undefined {
+  const admin = readAdmin(data.is_admin);
+  if (admin === true) return 'admin';
+
+  const guard = readLevel(data.guard_level);
+  if (guard === 1 || guard === 2 || guard === 3) return 'guard';
+
+  const wearing = readWearing(data.fans_medal_wearing_status);
+  const level = readLevel(data.fans_medal_level);
+  if (wearing === true && level !== undefined && level > 0) return 'member';
+
+  const adminRuledOut = admin === false;
+  const guardRuledOut = guard !== undefined && guard !== 1 && guard !== 2 && guard !== 3;
+  const memberRuledOut = wearing === false || (level !== undefined && level <= 0);
+  if (adminRuledOut && guardRuledOut && memberRuledOut) return 'normal';
+  return undefined;
 }
 
 /**
@@ -56,6 +118,8 @@ export function normalizeCmd(
     };
     const avatar = asString(data.uface).trim();
     if (avatar) event.avatar = avatar;
+    const identity = resolveIdentity(data);
+    if (identity) event.identity = identity;
     return { kind: 'event', event };
   }
 
