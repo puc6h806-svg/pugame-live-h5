@@ -1,9 +1,9 @@
 const MAP: Record<string, string> = {
   // Backend normalized codes (blive-h5-backend)
-  UNAUTHORIZED: '身份码无效或会话已过期',
-  ROOM_LIMIT: '该房间连接数已达上限，请关闭其他插件窗口后重试',
-  MSG_TYPE: '该消息类型未开通',
-  INTERNAL: '服务异常，请稍后重试',
+  UNAUTHORIZED: '未授权或验签失败',
+  ROOM_LIMIT: '连接数已满或房间不可用',
+  MSG_TYPE: '消息类型未开通',
+  INTERNAL: '服务异常请稍后重试',
   // Frontend-local
   NO_CODE: '请提供身份码',
   WS_CLOSED: '长连已断开',

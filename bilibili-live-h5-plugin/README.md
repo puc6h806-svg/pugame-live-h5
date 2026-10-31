@@ -65,7 +65,7 @@ npm run preview
 | 开场 | `POST /api/session/start` body `{ "code": "<身份码>" }` → `{ token, roomId, anchor, expiresIn }` |
 | 结束 | `POST /api/session/end` Header `Authorization: Bearer <token>` |
 | 读配置 | `GET /api/config?roomId=&appId=` → `{ roomId, appId, config }` |
-| 写配置 | `PUT /api/config` body `{ roomId, appId?, danmaku?, gift? }` → 推 `config_updated` |
+| 写配置 | `PUT /api/config` body `{ roomId, appId?, danmaku?, gift?, layout?, notice? }` → 推 `config_updated` |
 | 事件 | `WS /ws?token=<JWT>` JSON：`danmaku` / `gift` / `config_updated` / `error` |
 
 双心跳（WS + `/v2/app/heartbeat`）在**后端**完成；前端只需保持本服务 WS 不断。
@@ -73,10 +73,10 @@ npm run preview
 ### 归一化事件字段
 
 ```ts
-danmaku: { type, id, uid, uname, msg, avatar?, ts }   // 文本字段是 msg
-gift:    { type, id, uid, uname, giftId, giftName, num, price, ts }
-config_updated: { type, config: { danmaku, gift } }
-error:   { type, code: UNAUTHORIZED|ROOM_LIMIT|MSG_TYPE|INTERNAL, message? }
+danmaku: { type, id, uid, uname, msg, text?, avatar?, ts, highlight? }  // 文本仍读 msg；text 与 msg 相同
+gift:    { type, id, uid, uname, giftId, giftName, num, price, ts, combo? }
+config_updated: { type, config }
+error:   { type, code: UNAUTHORIZED|ROOM_LIMIT|MSG_TYPE|INTERNAL, message }
 ```
 
 ## 双态（plug_env）
@@ -89,11 +89,16 @@ error:   { type, code: UNAUTHORIZED|ROOM_LIMIT|MSG_TYPE|INTERNAL, message? }
 | 字段 | 前端默认 | 说明 |
 |------|----------|------|
 | `danmaku.enabled` | `true` | 是否显示弹幕 |
-| `danmaku.maxLines` | `8` | 最大行数（后端默认 50，以房间配置为准） |
+| `danmaku.maxLines` | `8` | 最大行数（与后端房间默认一致） |
 | `danmaku.showAvatar` | `true` | 是否显示头像 |
+| `danmaku.fontSize` / `opacity` / `enterMs` | `14` / `1` / `300` | 样式；设置态表单暂未露出，随配置往返 |
+| `danmaku.highlightKeywords` / `blockKeywords` | `[]` | 后端匹配；本页不另做高亮 UI |
 | `gift.enabled` | `true` | 是否显示礼物 |
 | `gift.minPrice` | `0` | 最低价格（官方整数单位） |
 | `gift.durationMs` | `3000` | 礼物展示时长 |
+| `gift.comboWindowMs` | `3000` | 服务端连击窗；`0` 关闭合并 |
+| `layout.wallPosition` / `giftAnchor` | `right` / `center` | 布局 |
+| `notice.enterEnabled` / `guardEnabled` / `scEnabled` | `false` | P2 预留，默认关 |
 
 设置态 `openedMsgTypes.danmaku|gift === false` 时灰显并标明「未开通消息类型」。
 
@@ -102,10 +107,10 @@ error:   { type, code: UNAUTHORIZED|ROOM_LIMIT|MSG_TYPE|INTERNAL, message? }
 | code | 文案 |
 |------|------|
 | `NO_CODE` | 请提供身份码 |
-| `UNAUTHORIZED` | 身份码无效或会话已过期（若后端带中文 message 则优先展示） |
-| `ROOM_LIMIT` | 该房间连接数已达上限… |
-| `MSG_TYPE` | 该消息类型未开通 |
-| `INTERNAL` | 服务异常，请稍后重试 |
+| `UNAUTHORIZED` | 未授权或验签失败 |
+| `ROOM_LIMIT` | 连接数已满或房间不可用 |
+| `MSG_TYPE` | 消息类型未开通 |
+| `INTERNAL` | 服务异常请稍后重试（上游结束时 message 为「上游连接已结束」） |
 
 ## iframe / HTTPS
 

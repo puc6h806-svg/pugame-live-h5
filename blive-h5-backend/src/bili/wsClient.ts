@@ -29,6 +29,8 @@ export interface UpstreamConnectOpts {
   onClose?: UpstreamCloseHandler;
   /** Log unknown / unsubscribed cmds (MSG_TYPE style). */
   onMsgType?: (cmd: string) => void;
+  /** Cmds that were skipped (including reserved P2 notice cmds). */
+  onSkippedCmd?: (cmd: string) => void;
 }
 
 /**
@@ -80,7 +82,7 @@ export class BiliWsClient {
   private connectCurrent(): void {
     const links = this.opts.wssLinks;
     if (!links.length) {
-      this.opts.onError?.(new Error('No wss_link provided'));
+      this.opts.onClose?.('all wss nodes failed');
       return;
     }
     if (this.linkIndex >= links.length) {
@@ -162,8 +164,9 @@ export class BiliWsClient {
         this.opts.onEvent(result.event);
       } else if (result.kind === 'unknown_type' && result.cmd) {
         this.opts.onMsgType?.(result.cmd);
+      } else if (result.kind === 'skip' && result.cmd) {
+        this.opts.onSkippedCmd?.(result.cmd);
       }
-      // skip: ignore quietly
     }
   }
 }

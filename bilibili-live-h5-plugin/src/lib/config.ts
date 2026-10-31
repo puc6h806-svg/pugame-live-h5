@@ -23,6 +23,8 @@ export function mergeConfig(base: PluginConfig, patch: Partial<PluginConfig>): P
   return {
     danmaku: { ...base.danmaku, ...(patch.danmaku ?? {}) },
     gift: { ...base.gift, ...(patch.gift ?? {}) },
+    layout: { ...base.layout, ...(patch.layout ?? {}) },
+    notice: { ...base.notice, ...(patch.notice ?? {}) },
     openedMsgTypes: {
       ...base.openedMsgTypes,
       ...(patch.openedMsgTypes ?? {}),
@@ -67,6 +69,8 @@ export async function saveConfig(config: PluginConfig, ctx?: ConfigContext): Pro
     roomId: typeof ctx.roomId === 'string' ? Number(ctx.roomId) || ctx.roomId : ctx.roomId,
     danmaku: config.danmaku,
     gift: config.gift,
+    layout: config.layout,
+    notice: config.notice,
   }
   if (ctx.appId != null && ctx.appId !== '') body.appId = ctx.appId
 

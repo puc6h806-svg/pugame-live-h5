@@ -44,12 +44,14 @@ export function normalizeCmd(
   const data = (msg.data && typeof msg.data === 'object' ? msg.data : {}) as Record<string, unknown>;
 
   if (cmd === CMD_DM) {
+    const text = asString(data.msg);
     const event: DanmakuEvent = {
       type: 'danmaku',
       id: asString(data.msg_id) || `dm-${asNumber(data.timestamp)}-${Math.random().toString(36).slice(2, 8)}`,
       uid: resolveUid(data),
       uname: asString(data.uname),
-      msg: asString(data.msg),
+      msg: text,
+      text,
       ts: asNumber(data.timestamp, Math.floor(Date.now() / 1000)),
     };
     const avatar = asString(data.uface).trim();
