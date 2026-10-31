@@ -1,8 +1,11 @@
 # GitHub Actions → Cloudflare Pages
 # Secrets (never commit): CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
 #
-# After first deploy: Cloudflare → Pages → Custom domains → pugame.site
-# Attach Worker (cloudflare/worker-same-origin.js) for same-origin /api + /ws.
+# After first deploy: registrar CNAME/ALIAS pugame.site → pugame-live-h5.pages.dev
+# (this Cloudflare account has no zone, so a Worker route on pugame.site/* cannot
+# attach until the domain is added here and nameservers are moved).
+# Same-origin /api + /ws are Pages Functions in cloudflare/functions/, which call
+# cloudflare/worker-same-origin.js. BACKEND_ORIGIN below is plain config, not a secret.
 # Confirm response headers are NOT X-Frame-Options: SAMEORIGIN.
 
 name: Deploy H5 to Cloudflare Pages
@@ -23,6 +26,10 @@ env:
   FRONTEND_PATH: bilibili-live-h5-plugin
   CF_PAGES_PROJECT: pugame-live-h5
   NODE_VERSION: "20"
+  # Not a secret. Pages Functions read env.BACKEND_ORIGIN and fall back to this
+  # same URL inside cloudflare/worker-same-origin.js when the project var is unset.
+  BACKEND_ORIGIN: http://111.231.164.192:8787
+  PAGES_ORIGIN: https://pugame-live-h5.pages.dev
 
 jobs:
   build-and-deploy:
@@ -59,6 +66,16 @@ jobs:
           if [ -f "$SRC/_redirects" ]; then
             cp "$SRC/_redirects" "${{ env.FRONTEND_PATH }}/dist/_redirects"
           fi
+
+      # wrangler pages deploy reads <cwd>/functions. Keep the action at the repo
+      # root (same as the existing Pages deploy) and point ./functions at the
+      # source under cloudflare/functions. Those files import worker-same-origin.js.
+      - name: Expose Pages Functions to Wrangler
+        run: |
+          ln -sfn cloudflare/functions functions
+          # Runtime fallback lives in the Worker module. Fail the job if it drifts
+          # from this workflow's plain BACKEND_ORIGIN.
+          grep -F "${BACKEND_ORIGIN}" cloudflare/worker-same-origin.js
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3

@@ -1,0 +1,58 @@
+# Deploy the standalone same-origin Worker (pugame-same-origin).
+#
+# Pages Functions (deploy-pages.yml) already proxy /api and /ws on the Pages
+# hostname. This Worker is for workers.dev and, later, a route on pugame.site/*.
+# A route cannot be attached until this Cloudflare account has the pugame.site
+# zone (add the site and point nameservers here). Do not declare routes here:
+# this account has zero zones, and a missing zone fails the deploy.
+#
+# Secrets stay in GitHub Actions (CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID).
+# BACKEND_ORIGIN / PAGES_ORIGIN are plain vars written to a temporary wrangler.toml.
+
+name: Deploy same-origin Worker
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "cloudflare/**"
+      - ".github/workflows/deploy-worker.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-worker
+  cancel-in-progress: true
+
+env:
+  BACKEND_ORIGIN: http://111.231.164.192:8787
+  PAGES_ORIGIN: https://pugame-live-h5.pages.dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Write temporary wrangler.toml
+        run: |
+          cat > wrangler.toml << 'EOF'
+          name = "pugame-same-origin"
+          main = "cloudflare/worker-same-origin.js"
+          compatibility_date = "2026-10-31"
+          workers_dev = true
+
+          [vars]
+          BACKEND_ORIGIN = "http://111.231.164.192:8787"
+          PAGES_ORIGIN = "https://pugame-live-h5.pages.dev"
+          EOF
+
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy

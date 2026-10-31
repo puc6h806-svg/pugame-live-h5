@@ -12,6 +12,8 @@ coverage/
 !.env.example
 
 # Deploy runtime / generated
+# Temporary Worker config from .github/workflows/deploy-worker.yml (do not commit)
+/wrangler.toml
 blive-deploy/releases/
 blive-deploy/current
 blive-deploy/current.new

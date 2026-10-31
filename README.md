@@ -15,8 +15,9 @@
 | `bilibili-live-h5-plugin/` | 前端（Vue / Vite） |
 | `blive-h5-backend/` | 后端（Express + WebSocket，默认 `:8787`） |
 | `blive-deploy/` | 本机 / VPS 边缘（Caddy / nginx / 发布脚本） |
-| `cloudflare/` | Pages `_headers` / `_redirects` + 同源 Worker |
-| `.github/workflows/deploy-pages.yml` | push `main` → 构建前端 → Cloudflare Pages |
+| `cloudflare/` | Pages `_headers` / `_redirects`、Pages Functions、同源 Worker |
+| `.github/workflows/deploy-pages.yml` | push `main` → 构建前端 → Cloudflare Pages（含 Functions） |
+| `.github/workflows/deploy-worker.yml` | 部署 Worker `pugame-same-origin`（无 zone 路由） |
 
 ---
 
@@ -71,11 +72,22 @@ ALLOWED_ORIGINS=https://pugame.site
 
 仅 **GitHub Pages 静态** **不能**反代 Node 的 `/api` 与 `/ws`。同源请用：
 
-1. **GitHub Actions** 构建前端 → **Cloudflare Pages**（项目名默认 `pugame-live-h5`）。
-2. **Worker** `cloudflare/worker-same-origin.js` 挂路由 `pugame.site/*`：
-   - `/` 静态 → Pages（`PAGES_ORIGIN` 或 ASSETS 绑定）
-   - `/api*`、`/ws*` → `BACKEND_ORIGIN`（后端 HTTPS 源，无尾斜杠）
-3. Pages 自定义域绑定 `pugame.site`。
+1. **GitHub Actions** 构建前端 → **Cloudflare Pages**（项目名 `pugame-live-h5`）。
+2. **Pages Functions**（`cloudflare/functions/`，部署时挂到仓库根 `functions/`）在 Pages 项目里反代：
+   - `/api*`、`/ws*` → `BACKEND_ORIGIN`（默认 `http://111.231.164.192:8787`，可用项目变量覆盖；不是密钥）
+   - 代理时会丢掉 `Host`、`cf-*`、`x-forwarded-*`，避免把 workers.dev / pages.dev 的 Host 传给上游（会 500）
+   - 静态页仍由 Pages 直接吐出，嵌入头来自 `cloudflare/_headers`
+3. 独立 Worker `cloudflare/worker-same-origin.js`（`deploy-worker.yml`，名字 `pugame-same-origin`）逻辑相同。**`pugame.site/*` 路由要等这个 Cloudflare 账号里有该 zone**（Add site 并把 NS 指过来）。当前账号没有 zone，不能挂 Worker Route。
+
+### 自定义域 DNS（在注册商改，不要写进本仓库）
+
+Pages 已添加 `pugame.site`，状态会停在 **pending / CNAME record not set**，直到注册商有这条记录：
+
+| 类型 | 主机 | 目标 |
+|------|------|------|
+| CNAME；apex 不能写 CNAME 时用 ALIAS 或 ANAME | `@`（`pugame.site`） | `pugame-live-h5.pages.dev` |
+
+校验通过后，`https://pugame.site/api` 与 `/ws` 走同一套 Pages Functions。在 zone 进这个账号之前，同源地址是 `https://pugame-live-h5.pages.dev/`（以及 CNAME 生效后的 apex）。
 
 ### GitHub Secrets（仓库 Settings → Secrets）
 
@@ -84,7 +96,7 @@ ALLOWED_ORIGINS=https://pugame.site
 | `CLOUDFLARE_API_TOKEN` | Wrangler Pages deploy |
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账号 ID |
 
-Worker 变量（Dashboard，非公开）：`BACKEND_ORIGIN`、`PAGES_ORIGIN`（或 ASSETS）。
+`BACKEND_ORIGIN` / `PAGES_ORIGIN` 是明文配置（写在 Worker 默认值和 workflow `env` 里，也可用 Pages / Worker 变量覆盖）。不要把 API Token 写进仓库。
 
 ### Actions 要点
 
