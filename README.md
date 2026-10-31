@@ -76,6 +76,7 @@ ALLOWED_ORIGINS=https://pugame.site
 1. **GitHub Actions** 构建前端 → **Cloudflare Pages**（项目名 `pugame-live-h5`）。
 2. **Pages Functions**（仓库根真实目录 `functions/`，调用 `cloudflare/worker-same-origin.js`）在 Pages 项目里反代：
    - `/api*`、`/ws*` → `BACKEND_ORIGIN`（默认 `http://111.231.164.192:8787`，可用项目变量覆盖；不是密钥）
+   - Workers 不能 `fetch()` 裸 IP（会得到 Cloudflare **1003**）。HTTP IP 源改用 TCP socket 拨号，`Host` 设成该 IP:端口
    - 代理时会丢掉 `Host`、`cf-*`、`x-forwarded-*`，避免把 workers.dev / pages.dev 的 Host 传给上游（会 500）
    - 静态页仍由 Pages 直接吐出，嵌入头来自 `cloudflare/_headers`
 3. 独立 Worker `cloudflare/worker-same-origin.js`（`deploy-worker.yml`，名字 `pugame-same-origin`）逻辑相同。**`pugame.site/*` 路由要等这个 Cloudflare 账号里有该 zone**（Add site 并把 NS 指过来）。当前账号没有 zone，不能挂 Worker Route。
