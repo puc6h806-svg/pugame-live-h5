@@ -1,12 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref, watch } from 'vue'
+import { createGiftShow, type GiftCard } from '../lib/giftShow'
 import type { GiftEvent, PluginConfig } from '../lib/types'
-
-interface ActiveGift {
-  key: string
-  event: GiftEvent
-  objectUrl?: string
-}
 
 const props = defineProps<{
   queue: GiftEvent[]
@@ -15,85 +10,115 @@ const props = defineProps<{
 
 const emit = defineEmits<{ consumed: [id: string] }>()
 
-const active = ref<ActiveGift[]>([])
-const timers = new Map<string, number>()
+const active = ref<GiftCard<GiftEvent> | null>(null)
+const seen = new Set<string>()
+let alive = true
+let leaveFallback = 0
 
-function cleanupOne(key: string) {
-  const t = timers.get(key)
-  if (t) clearTimeout(t)
-  timers.delete(key)
-  const idx = active.value.findIndex((g) => g.key === key)
-  if (idx >= 0) {
-    const item = active.value[idx]!
-    if (item.objectUrl) URL.revokeObjectURL(item.objectUrl)
-    const id = item.event.id
-    active.value.splice(idx, 1)
-    emit('consumed', id)
+function clearLeaveFallback() {
+  if (leaveFallback) {
+    clearTimeout(leaveFallback)
+    leaveFallback = 0
   }
 }
 
-function mountGift(ev: GiftEvent) {
-  if (!props.config.enabled) {
+function emitConsumed(ids: string[]) {
+  for (const id of ids) emit('consumed', id)
+}
+
+const show = createGiftShow<GiftEvent>({
+  now: () => Date.now(),
+  durationMs: () => props.config.durationMs,
+  later: (ms, fn) => {
+    const id = window.setTimeout(fn, ms)
+    return () => clearTimeout(id)
+  },
+  onShow: (card) => {
+    const was = active.value
+    active.value = card
+    if (!card && was && alive) {
+      clearLeaveFallback()
+      leaveFallback = window.setTimeout(() => show.release(), 420)
+    }
+  },
+  onConsumed: (ids) => emitConsumed(ids),
+})
+
+function ingest(ev: GiftEvent) {
+  if (seen.has(ev.id)) return
+  seen.add(ev.id)
+  if (!props.config.enabled || ev.price < (props.config.minPrice ?? 0)) {
     emit('consumed', ev.id)
     return
   }
-  if (ev.price < (props.config.minPrice ?? 0)) {
-    emit('consumed', ev.id)
-    return
-  }
-  const key = ev.id
-  // Avoid duplicate mounts
-  if (active.value.some((g) => g.key === key)) return
-
-  const entry: ActiveGift = { key, event: ev }
-  active.value.push(entry)
-
-  const duration = Math.max(800, props.config.durationMs || 3000)
-  const tid = window.setTimeout(() => cleanupOne(key), duration)
-  timers.set(key, tid)
+  show.push(ev)
 }
 
 watch(
   () => props.queue,
   (q) => {
-    for (const ev of q) {
-      if (!active.value.some((g) => g.key === ev.id)) {
-        mountGift(ev)
-      }
-    }
+    for (const ev of q) ingest(ev)
   },
-  { deep: true, immediate: true },
+  { immediate: true },
 )
 
+watch(
+  () => props.config.enabled,
+  (enabled) => {
+    if (!enabled) {
+      clearLeaveFallback()
+      show.clear()
+    }
+  },
+)
+
+function onAfterLeave() {
+  clearLeaveFallback()
+  show.release()
+}
+
 onBeforeUnmount(() => {
-  for (const key of [...timers.keys()]) cleanupOne(key)
-  active.value = []
+  alive = false
+  clearLeaveFallback()
+  show.clear()
 })
 </script>
 
 <template>
   <div class="gift-layer" aria-live="polite">
-    <TransitionGroup name="gift">
+    <Transition name="gift" @after-leave="onAfterLeave">
       <div
-        v-for="g in active"
-        :key="g.key"
+        v-if="active"
+        :key="active.key"
         class="gift-card"
+        :data-num="active.gift.num"
+        :data-hits="active.hits"
       >
         <div class="gift-icon" aria-hidden="true">
-          <img v-if="g.event.giftIcon" :src="g.event.giftIcon" alt="" @error="($event.target as HTMLImageElement).style.display='none'" />
+          <img
+            v-if="active.gift.giftIcon"
+            :src="active.gift.giftIcon"
+            alt=""
+            @error="($event.target as HTMLImageElement).style.display = 'none'"
+          />
           <span v-else class="gift-fallback">🎁</span>
         </div>
         <div class="gift-meta">
           <div class="gift-line">
-            <strong>{{ g.event.uname }}</strong>
+            <strong>{{ active.gift.uname }}</strong>
             投喂
-            <em>{{ g.event.giftName }}</em>
-            <span v-if="g.event.num > 1" class="x">×{{ g.event.num }}</span>
+            <em>{{ active.gift.giftName }}</em>
+            <span v-if="active.hits > 1 || active.gift.num > 1" class="combo" :key="active.bump">
+              <span v-if="active.hits > 1" class="combo-tag">连击</span>
+              <span v-if="active.gift.num > 1" class="x">×{{ active.gift.num }}</span>
+            </span>
           </div>
-          <div v-if="g.event.price > 0" class="gift-price">¥{{ (g.event.price / 1000).toFixed(1) }}</div>
+          <div v-if="active.gift.price > 0" class="gift-price">
+            ¥{{ (active.gift.price / 1000).toFixed(1) }}
+          </div>
         </div>
       </div>
-    </TransitionGroup>
+    </Transition>
   </div>
 </template>
 
@@ -101,13 +126,12 @@ onBeforeUnmount(() => {
 .gift-layer {
   position: absolute;
   inset: 0;
-  z-index: 10; /* higher than danmaku wall */
+  z-index: 10;
   pointer-events: none;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  gap: 10px;
   padding: 16px;
   box-sizing: border-box;
 }
@@ -160,10 +184,28 @@ onBeforeUnmount(() => {
   font-weight: 700;
   margin: 0 2px;
 }
-.gift-line .x {
+.combo {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
   margin-left: 4px;
+  animation: combo-pop 0.32s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+.combo-tag {
+  font-size: 11px;
   font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.28);
+}
+.x {
+  font-weight: 800;
+  font-size: 22px;
+  line-height: 1;
   color: #ffe082;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.18);
 }
 .gift-price {
   margin-top: 2px;
@@ -183,5 +225,26 @@ onBeforeUnmount(() => {
 .gift-leave-to {
   opacity: 0;
   transform: scale(1.05) translateY(-8px);
+}
+@keyframes combo-pop {
+  0% {
+    transform: scale(0.55);
+    opacity: 0.35;
+  }
+  55% {
+    transform: scale(1.35);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .combo,
+  .gift-enter-active,
+  .gift-leave-active {
+    animation: none;
+    transition: none;
+  }
 }
 </style>

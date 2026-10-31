@@ -68,7 +68,7 @@ npm run preview
 | 写配置 | `PUT /api/config` body `{ roomId, appId?, danmaku?, gift? }` → 推 `config_updated` |
 | 事件 | `WS /ws?token=<JWT>` JSON：`danmaku` / `gift` / `config_updated` / `error` |
 
-双心跳（WS + `/v2/app/heartbeat`）在**后端**完成；前端只需保持本服务 WS 不断。
+双心跳（WS + `/v2/app/heartbeat`）在**后端**完成；前端不发心跳。本服务 WS 意外断开后会自动重连（退避，上限约 10s；`UNAUTHORIZED` / `ROOM_LIMIT` 停止重连）。
 
 ### 归一化事件字段
 
@@ -83,6 +83,14 @@ error:   { type, code: UNAUTHORIZED|ROOM_LIMIT|MSG_TYPE|INTERNAL, message? }
 
 - `plug_env=0`（默认）：运行态 — 弹幕墙 + 礼物层
 - `plug_env=1`：设置态 — 配置表单 + 可选预览条
+
+## 运行态（重连 / 弹幕 / 礼物连击）
+
+本地预览：`http://localhost:5173/?plug_env=0&code=主播身份码`（`VITE_MOCK=0`，Vite 把 `/api` 与 `/ws` 代理到 `:8787`）。
+
+- **重连条**：运行态顶部一行。首次为「连接中」，连上后收起；断线为「已断开重连中」；再次连上为「已恢复」，约 2.4s 后自动收起。
+- **弹幕**：深色气泡、更高对比和行距；昵称小一号、正文更大更亮。上墙仍是原路径（预算 ≤500ms，只在超时打日志）。关闭弹幕后列表立刻清空，再打开不会把旧弹幕补回来。
+- **礼物连击**：同一用户、同一 `giftId`，展示过程中或排队 2s 内的连击合成一张卡（`num` 相加，数字弹出，并显示「连击」）。同屏最多 1 张全屏卡；上一张按 `durationMs` 卸载（最短 800ms，连击会从最后一次命中重新计时）后，至少再等 300ms 才播下一张。低于 `minPrice` 的礼物不上屏。
 
 ## 配置项
 
@@ -120,7 +128,7 @@ src/
   App.vue                 # plug_env 切视图；session/start 门禁
   views/RuntimeView.vue   # 弹幕墙 + 礼物层；听 WS
   views/SettingsView.vue  # GET/PUT /api/config
-  components/
+  components/            # DanmakuWall、GiftLayer、ConnectionStatus、SettingsForm、ErrorToast
   lib/                    # query session verify eventChannel config errorMap types env
   mock/eventMock.ts       # 仅 VITE_MOCK=1
 ```
