@@ -1,17 +1,28 @@
 import http from 'http';
 import express from 'express';
 import cors from 'cors';
-import { WebSocketServer, type WebSocket } from 'ws';
+import { WebSocketServer, type WebSocket, type RawData } from 'ws';
 import { loadEnv } from './utils/env';
 import { createApiRouter } from './gateway/routes';
 import { roomHub } from './gateway/roomHub';
+import { parseInbound, parsePlugEnv } from './gateway/inbound';
 import { verifySessionToken } from './session/token';
-import type { ErrorCode } from './types/events';
+import type { ErrorCode, PlugEnv } from './types/events';
+import { ERROR_TEXT } from './types/events';
+
+const AUTH_WAIT_MS = 5_000;
 
 function pushError(ws: WebSocket, code: ErrorCode, message?: string): void {
   if (ws.readyState === ws.OPEN) {
-    ws.send(JSON.stringify({ type: 'error', code, message }));
+    ws.send(JSON.stringify({ type: 'error', code, message: message ?? ERROR_TEXT[code] }));
   }
+}
+
+function rawToString(data: RawData): string {
+  if (typeof data === 'string') return data;
+  if (Buffer.isBuffer(data)) return data.toString('utf8');
+  if (Array.isArray(data)) return Buffer.concat(data).toString('utf8');
+  return Buffer.from(data).toString('utf8');
 }
 
 async function main(): Promise<void> {
@@ -30,32 +41,95 @@ async function main(): Promise<void> {
   const wss = new WebSocketServer({ server, path: '/ws' });
 
   wss.on('connection', (ws, req) => {
+    let attached: { roomId: number; appId: string } | null = null;
+    let plugEnv: PlugEnv = 0;
+    let authTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const clearAuthTimer = () => {
+      if (!authTimer) return;
+      clearTimeout(authTimer);
+      authTimer = null;
+    };
+
+    const attachWithToken = (token: string, envPlug: PlugEnv | undefined): void => {
+      let payload;
+      try {
+        payload = verifySessionToken(token);
+      } catch (err) {
+        console.warn('[ws] auth failed:', err instanceof Error ? err.message : err);
+        pushError(ws, 'UNAUTHORIZED');
+        if (!attached) ws.close();
+        return;
+      }
+
+      if (envPlug === 0 || envPlug === 1) plugEnv = envPlug;
+
+      if (attached) {
+        if (attached.roomId !== payload.roomId || attached.appId !== payload.appId) {
+          pushError(ws, 'UNAUTHORIZED');
+          return;
+        }
+        roomHub.setPlugEnv(ws, payload.roomId, payload.appId, plugEnv);
+        return;
+      }
+
+      const ok = roomHub.attachFrontend(ws, payload.roomId, payload.appId, plugEnv);
+      if (!ok) {
+        ws.close();
+        return;
+      }
+      attached = { roomId: payload.roomId, appId: payload.appId };
+      clearAuthTimer();
+    };
+
+    ws.on('message', (data) => {
+      let raw: unknown;
+      try {
+        raw = JSON.parse(rawToString(data));
+      } catch {
+        return;
+      }
+      const msg = parseInbound(raw);
+      if (msg.type === 'auth') {
+        attachWithToken(msg.token, msg.plugEnv);
+        return;
+      }
+      if (msg.type === 'config.set') {
+        if (!attached) {
+          pushError(ws, 'UNAUTHORIZED');
+          return;
+        }
+        roomHub.updateConfig(attached.roomId, attached.appId, msg.patch);
+        return;
+      }
+      if (msg.type === 'invalid') {
+        pushError(ws, msg.code, msg.code === 'INTERNAL' ? '配置无效' : undefined);
+      }
+    });
+
+    ws.on('close', () => clearAuthTimer());
+
     try {
       const host = req.headers.host ?? 'localhost';
       const url = new URL(req.url ?? '/ws', `http://${host}`);
       const token = url.searchParams.get('token');
-      if (!token) {
-        pushError(ws, 'UNAUTHORIZED', 'token query param required');
-        ws.close();
+      const fromQuery = parsePlugEnv(url.searchParams.get('plugEnv') ?? url.searchParams.get('plug_env'));
+      if (fromQuery !== undefined) plugEnv = fromQuery;
+
+      if (token) {
+        attachWithToken(token, plugEnv);
         return;
       }
 
-      let payload;
-      try {
-        payload = verifySessionToken(token);
-      } catch {
-        pushError(ws, 'UNAUTHORIZED', 'invalid or expired token');
-        ws.close();
-        return;
-      }
-
-      const ok = roomHub.attachFrontend(ws, payload.roomId, payload.appId);
-      if (!ok) {
-        // ROOM_LIMIT or missing session already pushed
-        ws.close();
-      }
+      authTimer = setTimeout(() => {
+        if (!attached && ws.readyState === ws.OPEN) {
+          pushError(ws, 'UNAUTHORIZED');
+          ws.close();
+        }
+      }, AUTH_WAIT_MS);
     } catch (err) {
-      pushError(ws, 'INTERNAL', err instanceof Error ? err.message : 'ws error');
+      console.warn('[ws] connection error:', err instanceof Error ? err.message : err);
+      pushError(ws, 'INTERNAL');
       ws.close();
     }
   });

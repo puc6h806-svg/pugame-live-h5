@@ -26,6 +26,8 @@ describe('normalizeCmd', () => {
     assert.equal(result.event.uid, 'oid-abc');
     assert.equal(result.event.uname, '测试用户');
     assert.equal(result.event.msg, '你好');
+    assert.equal(result.event.text, '你好');
+    assert.equal(result.event.highlight, undefined);
     assert.equal(result.event.avatar, 'https://example.com/a.png');
     assert.equal(result.event.ts, 1700000000);
   });
@@ -53,11 +55,19 @@ describe('normalizeCmd', () => {
     assert.equal(result.event.num, 5);
     assert.equal(result.event.price, 1000);
     assert.equal(result.event.uid, 'oid-gift');
+    assert.equal(result.event.combo, undefined);
   });
 
-  it('skips unrelated cmds without error', () => {
-    const result = normalizeCmd({ cmd: 'LIVE_OPEN_PLATFORM_LIKE', data: {} });
-    assert.equal(result.kind, 'skip');
+  it('skips unrelated and reserved notice cmds without error', () => {
+    for (const cmd of [
+      'LIVE_OPEN_PLATFORM_LIKE',
+      'LIVE_OPEN_PLATFORM_LIVE_ROOM_ENTER',
+      'LIVE_OPEN_PLATFORM_GUARD',
+      'LIVE_OPEN_PLATFORM_SUPER_CHAT',
+    ]) {
+      const result = normalizeCmd({ cmd, data: {} });
+      assert.equal(result.kind, 'skip', cmd);
+    }
   });
 });
 
