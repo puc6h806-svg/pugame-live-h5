@@ -15,7 +15,8 @@
 | `bilibili-live-h5-plugin/` | 前端（Vue / Vite） |
 | `blive-h5-backend/` | 后端（Express + WebSocket，默认 `:8787`） |
 | `blive-deploy/` | 本机 / VPS 边缘（Caddy / nginx / 发布脚本） |
-| `cloudflare/` | Pages `_headers` / `_redirects`、Pages Functions、同源 Worker |
+| `cloudflare/` | Pages `_headers` / `_redirects` + 同源 Worker |
+| `functions/` | Pages Functions：`/api`、`/ws` 反代（必须是真实目录，不能是 symlink） |
 | `.github/workflows/deploy-pages.yml` | push `main` → 构建前端 → Cloudflare Pages（含 Functions） |
 | `.github/workflows/deploy-worker.yml` | 部署 Worker `pugame-same-origin`（无 zone 路由） |
 
@@ -73,7 +74,7 @@ ALLOWED_ORIGINS=https://pugame.site
 仅 **GitHub Pages 静态** **不能**反代 Node 的 `/api` 与 `/ws`。同源请用：
 
 1. **GitHub Actions** 构建前端 → **Cloudflare Pages**（项目名 `pugame-live-h5`）。
-2. **Pages Functions**（`cloudflare/functions/`，部署时挂到仓库根 `functions/`）在 Pages 项目里反代：
+2. **Pages Functions**（仓库根真实目录 `functions/`，调用 `cloudflare/worker-same-origin.js`）在 Pages 项目里反代：
    - `/api*`、`/ws*` → `BACKEND_ORIGIN`（默认 `http://111.231.164.192:8787`，可用项目变量覆盖；不是密钥）
    - 代理时会丢掉 `Host`、`cf-*`、`x-forwarded-*`，避免把 workers.dev / pages.dev 的 Host 传给上游（会 500）
    - 静态页仍由 Pages 直接吐出，嵌入头来自 `cloudflare/_headers`

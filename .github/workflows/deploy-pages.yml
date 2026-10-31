@@ -4,7 +4,7 @@
 # After first deploy: registrar CNAME/ALIAS pugame.site → pugame-live-h5.pages.dev
 # (this Cloudflare account has no zone, so a Worker route on pugame.site/* cannot
 # attach until the domain is added here and nameservers are moved).
-# Same-origin /api + /ws are Pages Functions in cloudflare/functions/, which call
+# Same-origin /api + /ws are Pages Functions in functions/, which call
 # cloudflare/worker-same-origin.js. BACKEND_ORIGIN below is plain config, not a secret.
 # Confirm response headers are NOT X-Frame-Options: SAMEORIGIN.
 
@@ -67,14 +67,14 @@ jobs:
             cp "$SRC/_redirects" "${{ env.FRONTEND_PATH }}/dist/_redirects"
           fi
 
-      # wrangler pages deploy reads <cwd>/functions. Keep the action at the repo
-      # root (same as the existing Pages deploy) and point ./functions at the
-      # source under cloudflare/functions. Those files import worker-same-origin.js.
-      - name: Expose Pages Functions to Wrangler
+      # ./functions is a real directory (not a symlink). wrangler-action installs
+      # wrangler 3.90, which resolves the Functions bundle relative to that
+      # directory; a symlink makes it look one level above the repo and the
+      # deploy dies with ENOENT on functionsWorker-*.js.
+      - name: Check Pages Functions layout
         run: |
-          ln -sfn cloudflare/functions functions
-          # Runtime fallback lives in the Worker module. Fail the job if it drifts
-          # from this workflow's plain BACKEND_ORIGIN.
+          test -d functions && test ! -L functions
+          test -f functions/api.js && test -f functions/ws.js
           grep -F "${BACKEND_ORIGIN}" cloudflare/worker-same-origin.js
 
       - name: Deploy to Cloudflare Pages
