@@ -1,0 +1,68 @@
+# GitHub Actions → Cloudflare Pages
+# Secrets (never commit): CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
+#
+# After first deploy: Cloudflare → Pages → Custom domains → pugame.site
+# Attach Worker (cloudflare/worker-same-origin.js) for same-origin /api + /ws.
+# Confirm response headers are NOT X-Frame-Options: SAMEORIGIN.
+
+name: Deploy H5 to Cloudflare Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-pages
+  cancel-in-progress: true
+
+env:
+  FRONTEND_PATH: bilibili-live-h5-plugin
+  CF_PAGES_PROJECT: pugame-live-h5
+  NODE_VERSION: "20"
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ env.FRONTEND_PATH }}/package-lock.json
+
+      - name: Install & build frontend
+        working-directory: ${{ env.FRONTEND_PATH }}
+        env:
+          # Same-origin on https://pugame.site — leave empty
+          VITE_API_BASE: ""
+          VITE_WS_URL: ""
+          VITE_MOCK: "0"
+        run: |
+          npm ci
+          npm run build
+
+      - name: Copy Cloudflare Pages _headers / _redirects
+        run: |
+          SRC="cloudflare"
+          if [ ! -d "$SRC" ]; then
+            SRC="blive-deploy/github/cloudflare"
+          fi
+          cp "$SRC/_headers" "${{ env.FRONTEND_PATH }}/dist/_headers"
+          if [ -f "$SRC/_redirects" ]; then
+            cp "$SRC/_redirects" "${{ env.FRONTEND_PATH }}/dist/_redirects"
+          fi
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy ${{ env.FRONTEND_PATH }}/dist --project-name=${{ env.CF_PAGES_PROJECT }} --branch=main

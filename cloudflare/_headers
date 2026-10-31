@@ -1,0 +1,13 @@
+# Cloudflare Pages headers — apply to all plugin paths.
+# CRITICAL: current apex https://pugame.site returns Cloudflare 403 with
+# X-Frame-Options: SAMEORIGIN, which BLOCKS bilibili iframe. Production MUST
+# send ALLOW-FROM / frame-ancestors below — never DENY or SAMEORIGIN on plugin pages.
+#
+# Also configure Cloudflare Transform Rules / Configuration Rules so that any
+# zone-level "Security Headers" or Managed Headers do NOT re-inject SAMEORIGIN.
+
+/*
+  X-Frame-Options: ALLOW-FROM https://play-live.bilibili.com/
+  Content-Security-Policy: frame-ancestors https://play-live.bilibili.com https://*.bilibili.com 'self'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin

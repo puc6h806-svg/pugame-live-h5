@@ -1,0 +1,120 @@
+# GitHub Actions → Cloudflare Pages (recommended) or GitHub Pages artifact.
+# Copy to: <repo>/.github/workflows/deploy-pages.yml
+#
+# Placeholders (replace before use):
+#   OWNER / REPO          — GitHub owner and repo name (e.g. you / pugame)
+#   FRONTEND_PATH         — path to bilibili-live-h5-plugin in the repo
+#                           monorepo example: apps/bilibili-live-h5-plugin
+#                           single-repo example: .   (root is the frontend)
+#   CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN / CF_PAGES_PROJECT
+#                           — set as GitHub Actions secrets (never commit)
+#
+# Custom domain: after first successful Pages deploy, in Cloudflare Dashboard →
+# Pages → project → Custom domains → add pugame.site (and optionally www).
+# DNS must already be on Cloudflare for this zone.
+#
+# IMPORTANT — same-origin API/WS:
+#   GitHub Pages alone CANNOT reverse-proxy Node /api and /ws.
+#   Prefer: Cloudflare Pages (this workflow) + Worker route (see
+#   github/cloudflare/worker-same-origin.js.template) OR a single VPS + Caddy
+#   (see /workspace/blive-deploy/Caddyfile.prod after apply-domain.sh).
+#
+# Embed headers: copy github/cloudflare/_headers into the Pages publish
+# directory (usually dist/) so production never sends X-Frame-Options: SAMEORIGIN.
+
+name: Deploy H5 to Cloudflare Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # Uncomment if you also upload to GitHub Pages artifact (option B below):
+  # pages: write
+  # id-token: write
+
+concurrency:
+  group: deploy-pages
+  cancel-in-progress: true
+
+env:
+  # --- placeholders ---
+  FRONTEND_PATH: bilibili-live-h5-plugin   # or "." / "apps/h5"
+  CF_PAGES_PROJECT: pugame                # Cloudflare Pages project name
+  NODE_VERSION: "20"
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: ${{ env.FRONTEND_PATH }}/package-lock.json
+
+      - name: Install & build frontend
+        working-directory: ${{ env.FRONTEND_PATH }}
+        env:
+          # Same-origin on https://pugame.site — leave empty
+          VITE_API_BASE: ""
+          VITE_WS_URL: ""
+          VITE_MOCK: "0"
+        run: |
+          npm ci
+          npm run build
+
+      # Embed headers for Cloudflare Pages (must ship with the static root)
+      - name: Copy Cloudflare Pages _headers / _redirects
+        run: |
+          # Adjust SRC if templates live elsewhere in the monorepo
+          SRC="blive-deploy/github/cloudflare"
+          if [ ! -d "$SRC" ]; then
+            SRC="github/cloudflare"   # if only deploy templates are in this repo
+          fi
+          cp "$SRC/_headers" "${{ env.FRONTEND_PATH }}/dist/_headers"
+          if [ -f "$SRC/_redirects" ]; then
+            cp "$SRC/_redirects" "${{ env.FRONTEND_PATH }}/dist/_redirects"
+          fi
+
+      # ---------- Option A (recommended): Cloudflare Pages via Wrangler ----------
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy ${{ env.FRONTEND_PATH }}/dist --project-name=${{ env.CF_PAGES_PROJECT }} --branch=main
+
+      # ---------- Option B (static only — NO /api+/ws same-origin): GitHub Pages ---
+      # Uncomment ONLY if you intentionally split API to another host and set
+      # VITE_API_BASE / VITE_WS_URL at build time. Same-origin on pugame.site
+      # will NOT work with Pages alone.
+      #
+      # - name: Upload GitHub Pages artifact
+      #   uses: actions/upload-pages-artifact@v3
+      #   with:
+      #     path: ${{ env.FRONTEND_PATH }}/dist
+      #
+      # deploy-github-pages:
+      #   needs: build-and-deploy
+      #   runs-on: ubuntu-latest
+      #   environment:
+      #     name: github-pages
+      #     url: ${{ steps.deployment.outputs.page_url }}
+      #   permissions:
+      #     pages: write
+      #     id-token: write
+      #   steps:
+      #     - id: deployment
+      #       uses: actions/deploy-pages@v4
+
+      # After deploy:
+      # 1. Cloudflare → Pages → Custom domains → pugame.site
+      # 2. Attach Worker (worker-same-origin) on pugame.site/* OR route /api* /ws*
+      # 3. Confirm response headers are NOT SAMEORIGIN (see GITHUB-DEPLOY.md)

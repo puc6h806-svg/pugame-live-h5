@@ -1,0 +1,43 @@
+# Replace {$DOMAIN} or set env DOMAIN=plugin.example.com
+# Local TLS-less edge (for cloudflared in front): use :8080 block
+# Production with user domain + auto HTTPS:
+# {$DOMAIN} {
+
+:8080 {
+	root * /workspace/blive-deploy/current
+	encode gzip
+
+	# Bilibili live console iframe embed — never DENY
+	header {
+		Content-Security-Policy "frame-ancestors https://play-live.bilibili.com https://*.bilibili.com 'self'"
+		X-Frame-Options "ALLOW-FROM https://play-live.bilibili.com/"
+		-Server
+	}
+
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8787
+	}
+	handle /ws* {
+		reverse_proxy 127.0.0.1:8787
+	}
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+# --- Production template (uncomment + set domain) ---
+# plugin.example.com {
+# 	root * /workspace/blive-deploy/current
+# 	encode gzip
+# 	header {
+# 		Content-Security-Policy "frame-ancestors https://play-live.bilibili.com https://*.bilibili.com 'self'"
+# 		X-Frame-Options "ALLOW-FROM https://play-live.bilibili.com/"
+# 	}
+# 	handle /api/* { reverse_proxy 127.0.0.1:8787 }
+# 	handle /ws* { reverse_proxy 127.0.0.1:8787 }
+# 	handle {
+# 		try_files {path} /index.html
+# 		file_server
+# 	}
+# }

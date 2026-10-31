@@ -1,0 +1,35 @@
+# Dependencies & build
+node_modules/
+dist/
+dist-ssr/
+coverage/
+*.tsbuildinfo
+
+# Secrets & local env (never commit real credentials)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Deploy runtime / generated
+blive-deploy/releases/
+blive-deploy/current
+blive-deploy/current.new
+blive-deploy/Caddyfile.prod
+blive-deploy/nginx/nginx.prod.conf
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

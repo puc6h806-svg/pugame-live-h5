@@ -1,0 +1,8 @@
+node_modules/
+releases/
+current
+current.new
+*.log
+.env
+Caddyfile.prod
+nginx/nginx.prod.conf

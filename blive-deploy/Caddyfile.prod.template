@@ -1,0 +1,26 @@
+# Production Caddy — auto HTTPS
+# Generate: DOMAIN=plugin.example.com bash scripts/apply-domain.sh
+# Run:     caddy run --config /workspace/blive-deploy/Caddyfile.prod
+
+__DOMAIN__ {
+	root * /workspace/blive-deploy/current
+	encode gzip
+
+	# Bilibili live console iframe embed — never DENY
+	header {
+		Content-Security-Policy "frame-ancestors https://play-live.bilibili.com https://*.bilibili.com 'self'"
+		X-Frame-Options "ALLOW-FROM https://play-live.bilibili.com/"
+		-Server
+	}
+
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8787
+	}
+	handle /ws* {
+		reverse_proxy 127.0.0.1:8787
+	}
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
+}

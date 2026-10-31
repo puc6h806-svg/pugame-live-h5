@@ -1,0 +1,22 @@
+{
+  "name": "blive-deploy",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "serve": "node serve-prod.mjs",
+    "build": "bash scripts/build.sh",
+    "release": "bash scripts/release.sh",
+    "rollback": "bash scripts/rollback.sh",
+    "edge": "node serve-prod.mjs",
+    "tunnel": "bash scripts/tunnel.sh"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "express": "^5.3.0",
+    "http-proxy": "^1.18.1"
+  }
+}

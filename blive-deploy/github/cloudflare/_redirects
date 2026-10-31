@@ -1,0 +1,5 @@
+# Optional SPA fallback for Vue Router history mode.
+# Cloudflare Pages: uncomment if client-side routes 404 without this.
+# (Static assets and exact files still take precedence.)
+#
+# /*    /index.html   200
