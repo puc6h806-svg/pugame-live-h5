@@ -219,19 +219,6 @@ function decodeChunked(buf) {
   return concatBytes(parts);
 }
 
-async function readAll(readable, limit = 8_000_000) {
-  const reader = readable.getReader();
-  const parts = [];
-  let total = 0;
-  while (total < limit) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    parts.push(value);
-    total += value.byteLength;
-  }
-  return concatBytes(parts);
-}
-
 async function openOriginSocket(target) {
   const { connect } = await import("cloudflare:sockets");
   const port = Number(target.port || 80);
@@ -274,14 +261,56 @@ async function proxyHttpOverSocket(request, target) {
   const writer = socket.writable.getWriter();
   await writer.write(textEncoder.encode(buildOriginRequestHead(request.method, target, headers)));
   if (body && body.byteLength) await writer.write(body);
-  await writer.close();
-  const raw = await Promise.race([
-    readAll(socket.readable),
-    new Promise((_, reject) => {
-      setTimeout(() => reject(new Error("origin timeout")), 12_000);
-    }),
-  ]);
+  const raw = await readHttpMessage(socket.readable);
+  await writer.close().catch(() => {});
+  if (findHeaderEnd(raw) < 0) {
+    const preview = textDecoder.decode(raw.subarray(0, 160)).replace(/\s+/g, " ");
+    return new Response(
+      `origin response had no headers (${raw.byteLength} bytes)${preview ? `: ${preview}` : ""}`,
+      { status: 502 },
+    );
+  }
   return responseFromHttpBuffer(raw);
+}
+
+async function readHttpMessage(readable) {
+  const reader = readable.getReader();
+  let buf = new Uint8Array(0);
+  const deadline = Date.now() + 12_000;
+  while (Date.now() < deadline) {
+    if (httpMessageComplete(buf)) return buf;
+    let next;
+    try {
+      next = await Promise.race([
+        reader.read(),
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error("origin timeout")), Math.max(1, deadline - Date.now()));
+        }),
+      ]);
+    } catch (err) {
+      if (buf.byteLength) return buf;
+      throw err;
+    }
+    if (next.done) return buf;
+    buf = concatBytes([buf, next.value]);
+    if (buf.length > 8_000_000) return buf;
+  }
+  return buf;
+}
+
+function httpMessageComplete(buf) {
+  const headerEnd = findHeaderEnd(buf);
+  if (headerEnd < 0) return false;
+  const headerText = textDecoder.decode(buf.subarray(0, headerEnd)).toLowerCase();
+  const statusLine = headerText.split("\r\n", 1)[0] || "";
+  if (/\s204\b/.test(statusLine) || /\s304\b/.test(statusLine)) return true;
+  const body = buf.subarray(headerEnd + 4);
+  const lengthMatch = /(?:^|\r\n)content-length:\s*(\d+)/.exec(headerText);
+  if (lengthMatch) return body.byteLength >= Number(lengthMatch[1]);
+  if (/(?:^|\r\n)transfer-encoding:\s*chunked/.test(headerText)) {
+    return body.byteLength >= 5 && textDecoder.decode(body.slice(-5)) === "0\r\n\r\n";
+  }
+  return false;
 }
 
 function isWebSocket(request) {
