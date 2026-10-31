@@ -85,6 +85,8 @@ export type DanmakuEvent = {
   ts: number
   /** Set by the backend when highlightKeywords match. */
   highlight?: boolean
+  /** Open-platform role. Omitted when the backend cannot tell. */
+  identity?: 'admin' | 'guard' | 'member' | 'normal'
 }
 
 export type GiftEvent = {

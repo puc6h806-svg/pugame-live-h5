@@ -15,6 +15,9 @@ export const UPSTREAM_CLOSED_MESSAGE = '上游连接已结束';
 
 export type PlugEnv = 0 | 1;
 
+/** Room role on a danmaku, highest match wins. Not a gift or notice identity. */
+export type DanmakuIdentity = 'admin' | 'guard' | 'member' | 'normal';
+
 export interface DanmakuEvent {
   type: 'danmaku';
   id: string;
@@ -30,8 +33,11 @@ export interface DanmakuEvent {
   ts: number;
   /** True when msg/text hits danmaku.highlightKeywords. Omitted otherwise. */
   highlight?: boolean;
-  /** Reserved. Not populated in this slice. */
-  identity?: string;
+  /**
+   * Open-platform room role. Omitted when no role matched and "normal"
+   * would be a guess because a field is missing or unreadable.
+   */
+  identity?: DanmakuIdentity;
 }
 
 export interface GiftEvent {

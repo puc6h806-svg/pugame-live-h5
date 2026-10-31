@@ -97,6 +97,18 @@ describe('blockKeywords / highlightKeywords', () => {
     assert.equal(applyDanmakuPolicy(dm('你好广告'), base), null);
   });
 
+  it('keeps identity while highlight and block stay independent of it', () => {
+    const hit = applyDanmakuPolicy(dm('你好呀', { identity: 'guard' }), base);
+    assert.equal(hit?.identity, 'guard');
+    assert.equal(hit?.highlight, true);
+    assert.equal(hit?.msg, '你好呀');
+    assert.equal(hit?.text, '你好呀');
+    const plain = applyDanmakuPolicy(dm('普通弹幕', { identity: 'normal' }), base);
+    assert.equal(plain?.identity, 'normal');
+    assert.equal(plain?.highlight, undefined);
+    assert.equal(applyDanmakuPolicy(dm('点击广告', { identity: 'admin' }), base), null);
+  });
+
   it('default config does not drop or highlight ordinary danmaku', () => {
     const out = applyDanmakuPolicy(dm('hello', { avatar: 'http://a' }), DEFAULT_ROOM_CONFIG.danmaku);
     assert.equal(out?.msg, 'hello');

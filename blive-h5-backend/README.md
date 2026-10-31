@@ -163,7 +163,15 @@ JSON 文本帧：
 | `config_updated` | `{ type, config }` 完整房间配置 |
 | `error` | `{ type, code, message }` `message` 为下表短中文 |
 
-`msg` 与 `text` **同时下发且相等**（旧客户端继续读 `msg`）。`highlight` 仅在命中 `highlightKeywords` 时为 `true`，否则省略。`identity` 本切片不填。
+`msg` 与 `text` **同时下发且相等**（旧客户端继续读 `msg`）。`highlight` 仅在命中 `highlightKeywords` 时为 `true`，否则省略。`identity` 只来自 `LIVE_OPEN_PLATFORM_DM`，先命中先停；前三类都没中、又不能确认是普通人时省略该字段，不因此丢弃弹幕。
+
+| 条件（先命中先停） | `identity` |
+|------|------|
+| `is_admin === 1`，或 `true` / 非 0 数字 / `"1"` / `"true"` | `admin` |
+| 上一条未命中，且 `guard_level` 为 1 总督、2 提督、3 舰长 | `guard` |
+| 前两条未命中，且 `fans_medal_wearing_status === true` 且 `fans_medal_level > 0` | `member` |
+| 房管、大航海、粉丝牌都能排除（未佩戴或等级 ≤ 0 即不是 `member`） | `normal` |
+| 没有命中前三条，且仍有字段缺失或无法解析，不能确认是 `normal` | 省略 |
 
 - 上游 cmd：`LIVE_OPEN_PLATFORM_DM` → `danmaku`；`LIVE_OPEN_PLATFORM_SEND_GIFT` → `gift`
 - `uid`：优先 `open_id`，否则 `String(uid)`
