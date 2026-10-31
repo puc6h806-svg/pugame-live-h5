@@ -64,7 +64,11 @@ onBeforeUnmount(() => {
   justify-content: center;
   min-height: 100vh;
   min-height: 100dvh;
-  padding: 24px;
+  padding:
+    calc(24px + var(--safe-top))
+    calc(24px + var(--safe-right))
+    calc(24px + var(--safe-bottom))
+    calc(24px + var(--safe-left));
   box-sizing: border-box;
   font-size: 14px;
   color: #ddd;

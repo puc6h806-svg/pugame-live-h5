@@ -121,8 +121,8 @@ function onDevError() {
 }
 .dev-bar {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: calc(8px + var(--safe-top));
+  right: calc(8px + var(--safe-right));
   z-index: 20;
   display: flex;
   align-items: center;

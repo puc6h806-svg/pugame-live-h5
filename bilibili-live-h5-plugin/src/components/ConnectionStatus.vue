@@ -28,7 +28,9 @@ const label = computed(() => (props.phase === 'hidden' ? '' : LABEL[props.phase]
 <style scoped>
 .conn-anchor {
   position: absolute;
-  top: 10px;
+  top: calc(10px + var(--safe-top));
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
   left: 0;
   right: 0;
   z-index: 40;

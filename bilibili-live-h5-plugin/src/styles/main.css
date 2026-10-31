@@ -4,6 +4,14 @@
   box-sizing: border-box;
 }
 
+:root {
+  /* viewport-fit=cover lets 饭贩 / 直播姬 report notch and home-indicator insets. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
+
 html,
 body,
 #app {

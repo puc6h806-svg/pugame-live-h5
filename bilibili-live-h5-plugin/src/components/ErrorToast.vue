@@ -43,8 +43,8 @@ onMounted(() => {
 <style scoped>
 .error-toast {
   position: fixed;
-  left: 50%;
-  bottom: 24px;
+  left: calc(50% + (var(--safe-left) - var(--safe-right)) / 2);
+  bottom: calc(24px + var(--safe-bottom));
   transform: translateX(-50%);
   z-index: 10000;
   max-width: min(90vw, 420px);

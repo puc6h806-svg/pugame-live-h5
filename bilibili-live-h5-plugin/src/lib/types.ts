@@ -83,10 +83,13 @@ export type DanmakuEvent = {
   text?: string
   avatar?: string
   ts: number
-  /** Set by the backend when highlightKeywords match. */
+  /** Set by the backend when highlightKeywords match. Omitted otherwise. */
   highlight?: boolean
-  /** Open-platform role. Omitted when the backend cannot tell. */
-  identity?: 'admin' | 'guard' | 'member' | 'normal'
+  /**
+   * Open-platform role already mapped by the backend.
+   * Omitted when the backend cannot tell. `normal` draws no badge.
+   */
+  identity?: DanmakuIdentity
 }
 
 export type GiftEvent = {
@@ -106,6 +109,9 @@ export type GiftEvent = {
   /** Optional icon URL if backend ever adds it */
   giftIcon?: string
 }
+
+/** Backend-mapped room role on a danmaku. Not derived from raw guard_level / is_admin. */
+export type DanmakuIdentity = 'admin' | 'guard' | 'member' | 'normal'
 
 export type ConfigUpdated = {
   type: 'config_updated'
