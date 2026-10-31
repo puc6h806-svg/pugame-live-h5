@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
+import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import ConnectionStatus from '../components/ConnectionStatus.vue'
 import DanmakuWall from '../components/DanmakuWall.vue'
 import GiftLayer from '../components/GiftLayer.vue'
 import ErrorToast from '../components/ErrorToast.vue'
 import { fetchConfig, mergeConfig, saveLocalConfig } from '../lib/config'
-import { createEventChannel, type EventChannel } from '../lib/eventChannel'
+import { createEventChannel, type ConnPhase, type EventChannel } from '../lib/eventChannel'
 import { mapError } from '../lib/errorMap'
 import { isMock } from '../lib/env'
 import { DEFAULT_CONFIG, type DanmakuEvent, type GiftEvent, type PluginConfig } from '../lib/types'
@@ -18,12 +19,15 @@ const config = ref<PluginConfig>(structuredClone(DEFAULT_CONFIG))
 const danmakuItems = shallowRef<DanmakuEvent[]>([])
 const giftQueue = shallowRef<GiftEvent[]>([])
 const toast = ref<string | null>(null)
+const connPhase = ref<ConnPhase>('hidden')
 
 let channel: EventChannel | null = null
+let stopped = false
 const LATENCY_BUDGET_MS = 500
 const mockMode = isMock()
 
 function pushDanmaku(ev: DanmakuEvent) {
+  if (!config.value.danmaku.enabled) return
   const start = performance.now()
   const maxKeep = Math.max(20, (config.value.danmaku.maxLines || 8) * 3)
   const next = danmakuItems.value.concat(ev)
@@ -36,14 +40,20 @@ function pushDanmaku(ev: DanmakuEvent) {
   })
 }
 
+watch(
+  () => config.value.danmaku.enabled,
+  (enabled) => {
+    if (!enabled) danmakuItems.value = []
+  },
+)
+
 function onConsumedGift(id: string) {
   giftQueue.value = giftQueue.value.filter((g) => g.id !== id)
 }
 
 onMounted(async () => {
-  config.value = await fetchConfig(
-    props.roomId != null ? { roomId: props.roomId } : undefined,
-  )
+  config.value = await fetchConfig(props.roomId != null ? { roomId: props.roomId } : undefined)
+  if (stopped) return
 
   channel = createEventChannel(
     (ev) => {
@@ -65,12 +75,18 @@ onMounted(async () => {
           break
       }
     },
-    { token: props.token },
+    {
+      token: props.token,
+      onStatus: (phase) => {
+        connPhase.value = phase
+      },
+    },
   )
   channel.connect()
 })
 
 onBeforeUnmount(() => {
+  stopped = true
   channel?.disconnect()
   channel = null
 })
@@ -84,6 +100,7 @@ function onDevError() {
   <div class="runtime">
     <DanmakuWall :items="danmakuItems" :config="config.danmaku" />
     <GiftLayer :queue="giftQueue" :config="config.gift" @consumed="onConsumedGift" />
+    <ConnectionStatus :phase="connPhase" />
     <ErrorToast :message="toast" @clear="toast = null" />
 
     <div v-if="mockMode" class="dev-bar">

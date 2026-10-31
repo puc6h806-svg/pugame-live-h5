@@ -16,7 +16,7 @@ const visible = computed(() => {
 })
 
 watch(
-  () => visible.value.length,
+  () => visible.value[visible.value.length - 1]?.id,
   async () => {
     await nextTick()
     const el = listEl.value
@@ -28,19 +28,17 @@ watch(
 <template>
   <div class="danmaku-wall" :class="{ disabled: !config.enabled }">
     <div ref="listEl" class="danmaku-list">
-      <div
-        v-for="d in visible"
-        :key="d.id"
-        class="danmaku-item"
-      >
+      <div v-for="d in visible" :key="d.id" class="danmaku-item">
         <span
           v-if="config.showAvatar"
           class="avatar"
           :style="d.avatar ? { backgroundImage: `url(${d.avatar})` } : undefined"
           aria-hidden="true"
         >{{ d.avatar ? '' : (d.uname.slice(0, 1) || '?') }}</span>
-        <span class="uname">{{ d.uname }}</span>
-        <span class="text">{{ d.msg }}</span>
+        <span class="body">
+          <span class="uname">{{ d.uname }}</span>
+          <span class="text">{{ d.msg }}</span>
+        </span>
       </div>
     </div>
   </div>
@@ -55,67 +53,91 @@ watch(
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  padding: 12px;
+  padding: 12px 12px 14px;
   box-sizing: border-box;
 }
-.danmaku-wall.disabled {
-  opacity: 0.35;
+.danmaku-wall.disabled .danmaku-list {
+  visibility: hidden;
 }
 .danmaku-list {
   max-height: 100%;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 .danmaku-item {
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  align-items: flex-start;
+  gap: 8px;
   align-self: flex-start;
-  max-width: 100%;
-  padding: 4px 10px 4px 4px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.45);
+  max-width: min(100%, 34em);
+  padding: 6px 12px 6px 6px;
+  border-radius: 16px;
+  background: rgba(6, 8, 14, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
   color: #fff;
-  font-size: 13px;
-  line-height: 1.3;
-  animation: fade-in 0.18s ease-out;
-  will-change: transform, opacity;
+  line-height: 1.35;
+  animation: fade-in 0.16s ease-out;
 }
 .avatar {
   flex-shrink: 0;
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
+  margin-top: 1px;
   border-radius: 50%;
-  background: #3a3a4a center/cover no-repeat;
+  background: #2c3142 center/cover no-repeat;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.28);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
-  color: #ddd;
+  font-size: 12px;
+  font-weight: 700;
+  color: #f2f4f8;
+}
+.body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 6px;
+  row-gap: 1px;
+  min-width: 0;
+  padding-top: 2px;
 }
 .uname {
-  color: #7ec8ff;
+  color: #9ad2ff;
+  font-size: 12px;
   font-weight: 600;
+  line-height: 1.4;
   white-space: nowrap;
 }
 .uname::after {
   content: '：';
-  color: rgba(255, 255, 255, 0.55);
+  color: rgba(255, 255, 255, 0.42);
   font-weight: 400;
 }
 .text {
+  color: #fff;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.45;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
   word-break: break-word;
 }
 @keyframes fade-in {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .danmaku-item {
+    animation: none;
   }
 }
 </style>
